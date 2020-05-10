@@ -1,0 +1,114 @@
+---
+title: "02 - Data Merging"
+author: "Murray"
+date: "5/9/2020"
+output: html_document
+---
+
+In 01, we retrieved the data and cleaned it up to some extent. But now we need to merge the data into one. 
+
+This mainly involves fixing discrepencies in country names
+
+```{r, include=F}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Step 1 - Find the country name discrepencies
+
+For now, we're just merging median_age_data, obesity_data, gdp_data, and tests_cases
+
+```{r}
+
+length(unique(tests_cases_deaths_data$location))
+length(unique(obesity_data$Country))
+length(unique(median_age_data$Country))
+length(unique(gdp_per_capita_ppp_data$Country))
+
+tests_cases_deaths_data$location <- gsub(" ", "", tests_cases_deaths_data$location)
+obesity_data$Country <- gsub(" ", "", obesity_data$Country)
+gdp_per_capita_ppp_data$Country <- gsub(" ", "", gdp_per_capita_ppp_data$Country)
+
+# Make obesity_data names correspond to tests_cases_deaths_data names
+
+setdiff(obesity_data$Country, tests_cases_deaths_data$location)
+setdiff(tests_cases_deaths_data$location, obesity_data$Country)
+
+obesity_data$Country[obesity_data$Country == "Bolivia(PlurinationalStateof)"] <- "Bolivia"
+obesity_data$Country[obesity_data$Country == "Venezuela(BolivarianRepublicof)"] <- "Venezuela"
+obesity_data$Country[obesity_data$Country == "UnitedKingdomofGreatBritainandNorthernIreland"] <- "UnitedKingdom"
+obesity_data$Country[obesity_data$Country == "UnitedStatesofAmerica"] <- "UnitedStates"
+obesity_data$Country[obesity_data$Country == "DemocraticRepublicoftheCongo"] <- "DemocraticRepublicofCongo"
+obesity_data$Country[obesity_data$Country == "Côted'Ivoire"] <- "Coted'Ivoire"
+obesity_data$Country[obesity_data$Country == "BruneiDarussalam"] <- "Brunei"
+obesity_data$Country[obesity_data$Country == "CaboVerde"] <- "CapeVerde"
+obesity_data$Country[obesity_data$Country == "Czechia"] <- "CzechRepublic"
+obesity_data$Country[obesity_data$Country == "DemocraticPeople'sRepublicofKorea"] <- "SouthKorea"
+obesity_data$Country[obesity_data$Country == "Eswatini"] <- "Swaziland"
+obesity_data$Country[obesity_data$Country == "Iran(IslamicRepublicof)"] <- "Iran"
+obesity_data$Country[obesity_data$Country == "LaoPeople'sDemocraticRepublic"] <- "Laos"
+obesity_data$Country[obesity_data$Country == "RepublicofMoldova"] <- "Moldova"
+obesity_data$Country[obesity_data$Country == "RepublicofNorthMacedonia"] <- "Macedonia"
+obesity_data$Country[obesity_data$Country == "RussianFederation"] <- "Russia"
+obesity_data$Country[obesity_data$Country == "SyrianArabRepublic"] <- "Syria"
+obesity_data$Country[obesity_data$Country == "Timor-Leste"] <- "Timor"
+obesity_data$Country[obesity_data$Country == "UnitedRepublicofTanzania"] <- "Tanzania"
+obesity_data$Country[obesity_data$Country == "VietNam"] <- "Vietnam"
+obesity_data$Country[obesity_data$Country == "RepublicofKorea"] <- "NorthKorea"
+
+simple_model_data <- full_join(tests_cases_deaths_data %>% select(location, date, total_cases, total_deaths, total_deaths_per_million) %>% rename(Country = location),
+                               obesity_data %>% select(Country, Bothsexes) %>% rename(Obesity_rate = Bothsexes))
+```
+
+```{r}
+setdiff(simple_model_data$Country, median_age_data$Country)[order(setdiff(simple_model_data$Country, median_age_data$Country))]
+setdiff(median_age_data$Country, simple_model_data$Country)[order(setdiff(median_age_data$Country, simple_model_data$Country))]
+
+simple_model_data$Country[simple_model_data$Country == "FaeroeIslands"] <- "FaroeIslands"
+simple_model_data$Country[simple_model_data$Country == "UnitedStatesVirginIslands"] <- "VirginIslands"
+simple_model_data$Country[simple_model_data$Country == "Micronesia(FederatedStatesof)"] <- "Micronesia"
+
+median_age_data$Country[median_age_data$Country == "Bahamas,The"] <- "Bahamas"
+median_age_data$Country[median_age_data$Country == "CaboVerde"] <- "CapeVerde"
+median_age_data$Country[median_age_data$Country == "Congo,DemocraticRepublicofthe"] <- "DemocraticRepublicofCongo"
+median_age_data$Country[median_age_data$Country == "Congo,Republicofthe"] <- "Congo"
+median_age_data$Country[median_age_data$Country == "Czechia"] <- "CzechRepublic"
+median_age_data$Country[median_age_data$Country == "Eswatini"] <- "Swaziland"
+median_age_data$Country[median_age_data$Country == "Gambia,The"] <- "Gambia"
+median_age_data$Country[median_age_data$Country == "Korea,North"] <- "NorthKorea"
+median_age_data$Country[median_age_data$Country == "Korea,South"] <- "SouthKorea"
+median_age_data$Country[median_age_data$Country == "Micronesia,FederatedStatesof"] <- "Micronesia"
+median_age_data$Country[median_age_data$Country == "Timor-Leste"] <- "Timor"
+
+simple_model_data <- full_join(simple_model_data, median_age_data)
+```
+
+```{r}
+setdiff(simple_model_data$Country, gdp_per_capita_ppp_data$Country)[order(setdiff(simple_model_data$Country, gdp_per_capita_ppp_data$Country))]
+setdiff(gdp_per_capita_ppp_data$Country, simple_model_data$Country)[order(setdiff(gdp_per_capita_ppp_data$Country, simple_model_data$Country))]
+
+gdp_per_capita_ppp_data$Country[gdp_per_capita_ppp_data$Country == "BruneiDarussalam"] <- "Brunei"
+gdp_per_capita_ppp_data$Country[gdp_per_capita_ppp_data$Country == "CaboVerde"] <- "CapeVerde"
+gdp_per_capita_ppp_data$Country[gdp_per_capita_ppp_data$Country == "C\U3e34663cted'Ivoire"] <- "Coted'Ivoire"
+gdp_per_capita_ppp_data$Country[gdp_per_capita_ppp_data$Country == "Eswatini"] <- "Swaziland"
+gdp_per_capita_ppp_data$Country[gdp_per_capita_ppp_data$Country == "HongKongSAR"] <- "HongKong"
+gdp_per_capita_ppp_data$Country[gdp_per_capita_ppp_data$Country == "IslamicRepublicofIran"] <- "Iran"
+gdp_per_capita_ppp_data$Country[gdp_per_capita_ppp_data$Country == "Korea"] <- "SouthKorea"
+gdp_per_capita_ppp_data$Country[gdp_per_capita_ppp_data$Country == "KyrgyzRepublic"] <- "Kyrgyzstan"
+gdp_per_capita_ppp_data$Country[gdp_per_capita_ppp_data$Country == "LaoP.D.R."] <- "Laos"
+gdp_per_capita_ppp_data$Country[gdp_per_capita_ppp_data$Country == "MacaoSAR"] <- "Macau"
+gdp_per_capita_ppp_data$Country[gdp_per_capita_ppp_data$Country == "NorthMacedonia"] <- "Macedonia"
+gdp_per_capita_ppp_data$Country[gdp_per_capita_ppp_data$Country == "RepublicofCongo"] <- "Congo"
+gdp_per_capita_ppp_data$Country[gdp_per_capita_ppp_data$Country == "SlovakRepublic"] <- "Slovakia"
+gdp_per_capita_ppp_data$Country[gdp_per_capita_ppp_data$Country == "St.KittsandNevis"] <- "SaintKittsandNevis"
+gdp_per_capita_ppp_data$Country[gdp_per_capita_ppp_data$Country == "St.Lucia"] <- "SaintLucia"
+gdp_per_capita_ppp_data$Country[gdp_per_capita_ppp_data$Country == "St.VincentandtheGrenadines"] <- "SaintVincentandtheGrenadines"
+gdp_per_capita_ppp_data$Country[gdp_per_capita_ppp_data$Country == "TaiwanProvinceofChina"] <- "Taiwan"
+gdp_per_capita_ppp_data$Country[gdp_per_capita_ppp_data$Country == "TheBahamas"] <- "Bahamas"
+gdp_per_capita_ppp_data$Country[gdp_per_capita_ppp_data$Country == "TheGambia"] <- "Gambia"
+gdp_per_capita_ppp_data$Country[gdp_per_capita_ppp_data$Country == "S\U3e33653coTom\U3e39653candPr\U3e64653cncipe"] <- "SaoTomeAndPrincipe"
+gdp_per_capita_ppp_data$Country[gdp_per_capita_ppp_data$Country == "Timor-Leste"] <- "Timor"
+
+simple_model_data <- full_join(simple_model_data, gdp_per_capita_ppp_data)
+```
+
+

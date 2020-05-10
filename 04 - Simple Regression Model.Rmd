@@ -1,0 +1,86 @@
+---
+title: "03 - Simple Regression Model"
+author: "Murray"
+date: "5/9/2020"
+output: html_document
+---
+
+GLM Predicts deaths x days after initial outbreak given average age, GDP (PPP), and Obesity rate
+
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+simple_model_data
+```
+
+```{r}
+simple_model_data_with_start <- simple_model_data_with_start
+
+model_variables <- simple_model_data %>%
+  group_by(Country, Obesity_rate, gdp_estimate_ppp, Median_Age) %>%
+  summarise(deaths_per_million = max(total_deaths_per_million),
+            time = max(days_since_outbreak)) %>%
+  filter(!is.na(Obesity_rate) & !is.na(gdp_estimate_ppp) & !is.na(Median_Age) & !is.na(deaths_per_million))
+
+
+ggplot(data = model_variables, aes(x = Obesity_rate)) +
+  geom_density()
+
+ggplot(data = model_variables, aes(x = Median_Age)) +
+  geom_density()
+
+ggplot(data = model_variables, aes(x = gdp_estimate_ppp)) +
+  geom_density()
+
+exp(model_variables$gdp_estimate_ppp)
+
+ggplot(data = model_variables, aes(x = ((gdp_estimate_ppp - mean(gdp_estimate_ppp))/ sd(gdp_estimate_ppp)))) +
+  geom_density()
+  
+```
+```{r}
+ggplot(data = model_variables, aes(x = gdp_estimate_ppp, y = deaths_per_million)) +
+  geom_line()
+
+ggplot(data = model_variables, aes(x = Median_Age, y = deaths_per_million)) +
+  geom_line()
+
+ggplot(data = model_variables, aes(x = Obesity_rate, y = deaths_per_million)) +
+  geom_line()
+
+```
+
+```{r}
+m1 <- glm(data = model_variables, formula = deaths_per_million ~ Obesity_rate + Median_Age + gdp_estimate_ppp)
+
+a1 <- anova(m1)
+
+1
+
+summary(m1)
+```
+```{r}
+(1696105 - 1340199) / 1696105
+
+m2 <- glm(data = model_variables, formula = deaths_per_million ~ Obesity_rate)
+
+model_variables
+
+summary(m2)
+```
+
+
+```{r}
+ggplot(data = NULL, aes(x = m1$fitted.values, y = model_variables$deaths_per_million)) + 
+  geom_point()
+```
+
+
+```{r}
+ggplot(data = model_variables, aes(x = m1$residuals)) +
+  geom_density()
+```
+
+
+

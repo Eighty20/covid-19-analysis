@@ -1,0 +1,120 @@
+---
+title: "03 - Determing date of initial outbreak for each country"
+author: "Murray"
+date: "5/9/2020"
+output: html_document
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Let's set day one to be day of first case  in each country
+
+```{r}
+sum(is.na(simple_model_data$total_cases))
+
+simple_model_data[is.na(simple_model_data$total_cases),]
+
+simple_model_data <- simple_model_data[!is.na(simple_model_data$total_cases),]
+
+simple_model_data <- simple_model_data[order(simple_model_data$Country),]
+
+simple_model_data$date <- as.Date(simple_model_data$date)
+
+start_date_by_country <- 
+  as.vector(t((simple_model_data %>%
+    filter(total_cases > 0) %>%
+    group_by(Country) %>%
+    slice(1) %>%
+    ungroup() %>%
+    select(date))[,1]))
+
+group_sizes <- as.vector(t((simple_model_data %>%
+    filter(total_cases > 0) %>%
+    group_by(Country) %>%
+    summarise(n = n()))[,2]))
+
+simple_model_data <- simple_model_data %>%
+    filter(total_cases > 0) %>%
+    mutate(days_since_outbreak = date - as.Date(rep(start_date_by_country, group_sizes)))
+
+start_date_by_country <- 
+  as.vector(t((simple_model_data %>%
+    filter(total_cases > 0) %>%
+    group_by(Country) %>%
+    slice(1) %>%
+    ungroup() %>%
+    select(date))[,1]))
+
+group_sizes <- as.vector(t((simple_model_data %>%
+    filter(total_cases > 0) %>%
+    group_by(Country) %>%
+    summarise(n = n()))[,2]))
+
+simple_model_data <- simple_model_data %>%
+    filter(total_cases > 0) %>%
+    mutate(days_since_outbreak = date - as.Date(rep(start_date_by_country, group_sizes)))
+
+```
+
+```{r}
+# Let's select 10 random countries to compare
+
+random_countries <- sample(unique(simple_model_data$Country), 1)
+
+simple_model_data_2 <- left_join(simple_model_data, tests_cases_deaths_data %>% select (location, date, new_deaths_per_million) %>% rename(Country = location) %>% mutate(date = as.Date(date)))
+
+death_curves <- list()
+
+for(i in unique(simple_model_data$Country)) {
+  death_curves[[i]] <- ggplot(data = simple_model_data_2 %>% filter(Country == i), aes(x = days_since_outbreak, y = new_deaths_per_million, color = Country)) +
+    geom_line() +
+    geom_point()
+}
+
+death_curves[1:20]
+```
+
+```{r}
+death_curves[21:40]
+```
+
+```{r}
+death_curves[41:60]
+```
+
+```{r}
+death_curves[21:80]
+```
+
+```{r}
+death_curves[21:100]
+```
+
+```{r}
+death_curves[21:120]
+```
+
+```{r}
+death_curves[121:140]
+```
+
+```{r}
+death_curves[141:160]
+```
+
+```{r}
+death_curves[161:180]
+```
+
+```{r}
+death_curves[181:200]
+```
+
+```{r}
+death_curves[201:220]
+```
+
+
+
