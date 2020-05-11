@@ -7,6 +7,9 @@ output: html_document
 
 ```{r, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
+library(caTools)
+library(GGally)
 ```
 
 # Let's set day one to be day of first case  in each country
@@ -67,10 +70,30 @@ simple_model_data_2 <- left_join(simple_model_data, tests_cases_deaths_data %>% 
 
 death_curves <- list()
 
+canada_data <- simple_model_data_2 %>% filter(Country == "Canada")
+
+canada_smooth <- cbind.data.frame(loess.smooth(x = canada_data$days_since_outbreak, y = canada_data$new_deaths_per_million, span = 2/3)$x,
+                                  loess.smooth(x = canada_data$days_since_outbreak, y = canada_data$new_deaths_per_million, span = 0.1)$y)
+
+names(canada_smooth) <- c("x", "y")
+
+ggplot(data = canada_smooth,
+       aes(x = x, y = y)) +
+  geom_line()
+
+ggplot(data = canada_data,
+       aes(x = days_since_outbreak, y = runmean(new_deaths_per_million, 5))) +
+  geom_line()
+
+simple_model_data
+
 for(i in unique(simple_model_data$Country)) {
-  death_curves[[i]] <- ggplot(data = simple_model_data_2 %>% filter(Country == i), aes(x = days_since_outbreak, y = new_deaths_per_million, color = Country)) +
+  death_curves[[i]] <- ggplot(data = simple_model_data_2 %>% filter(Country == i),
+                              aes(x = days_since_outbreak, y = new_deaths_per_million, color = Country)) +
     geom_line() +
-    geom_point()
+    geom_point() +
+    geom_line(data = simple_model_data_2 %>% filter(Country == i),
+              aes(x = days_since_outbreak, y = runmean(new_deaths_per_million, 5, align = "right"), color = "5-day rolling average"))
 }
 
 death_curves[1:20]
@@ -116,5 +139,51 @@ death_curves[181:200]
 death_curves[201:220]
 ```
 
+# Add rolling 5-day averages to data
 
+```{r}
+deaths_5_day_averages <- c()
+infections_5_day_averages <- c()
+peak_deaths_already_occurred_indicator <- c()
+peak_cases_already_occurred_indicator <- c()
+
+for(i in unique(tests_cases_deaths_data$location)) {
+  temp_data <- tests_cases_deaths_data %>% filter(location == i)
+  
+  temp_deaths_ra <- runmean(temp_data$new_deaths_per_million, k = 5, align = "right")
+  temp_cases_ra <- runmean(temp_data$new_cases_per_million, k = 5, align = "right")
+  
+  deaths_5_day_averages <- c(deaths_5_day_averages, temp_deaths_ra)
+  infections_5_day_averages <- c(infections_5_day_averages, temp_cases_ra)
+  
+  if(length(na.omit(temp_deaths_ra)) == 0) {
+    peak_deaths_already_occurred_indicator <- c(peak_deaths_already_occurred_indicator, rep(0, length(temp_deaths_ra)))
+  } else {
+    peak_deaths_already_occurred_indicator <- c(peak_deaths_already_occurred_indicator,
+                                                case_when(which.max(temp_deaths_ra) < length(temp_deaths_ra) - 3 ~ rep(1, length(temp_deaths_ra)),
+                                                          TRUE ~ rep(0, length(temp_deaths_ra))))
+    
+  }
+  
+  if(length(na.omit(temp_cases_ra)) == 0) {
+    peak_cases_already_occurred_indicator <- c(peak_cases_already_occurred_indicator, rep(0, length(temp_cases_ra)))
+  } else {
+  peak_cases_already_occurred_indicator <- c(peak_cases_already_occurred_indicator,
+                                             case_when(which.max(temp_cases_ra) < length(temp_cases_ra) - 3 ~ rep(1, length(temp_cases_ra)),
+                                                       TRUE ~ rep(0, length(temp_cases_ra))))
+    
+  }
+}
+
+tests_cases_deaths_data_2 <- tests_cases_deaths_data %>%
+  rename(Country = location) %>%
+  cbind.data.frame(deaths_5_day_averages, infections_5_day_averages, peak_deaths_already_occurred_indicator, peak_cases_already_occurred_indicator)
+
+simple_model_data <- left_join(simple_model_data, tests_cases_deaths_data_2 %>% select(Country,
+                                                                                        date,
+                                                                                        deaths_5_day_averages,
+                                                                                        infections_5_day_averages,
+                                                                                        peak_deaths_already_occurred_indicator,
+                                                                                        peak_cases_already_occurred_indicator))
+```
 

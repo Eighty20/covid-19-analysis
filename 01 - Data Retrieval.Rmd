@@ -272,20 +272,34 @@ cbind.data.frame(age_band_midpoints,
 
 # Sweden and Netherlands show very similar results, Italy slightly different results. Let's just take the average of the 3.
 
+relative_fatality_rates <- rowMeans(cbind.data.frame(deaths_per_hundred_thousand_by_age_group_italy,
+                                                     deaths_per_hundred_thousand_by_age_group_sweden,
+                                                     deaths_per_hundred_thousand_by_age_group_netherlands))
 
+population_fatality_rate <- c()
 
+                              
+for(i in names(age_data)) {
+  temp_data <- as.data.frame(age_data[i])
+  
+  entry <- sum(relative_fatality_rates *
+                 diff(c(0, cumsum(rowSums(temp_data[,2:3]))[c(seq(2, 18, 2), 21)])) /
+                 sum(rowSums(temp_data[,2:3])))
+  
+  population_fatality_rate <- c(population_fatality_rate, entry)
+  
+}
+
+population_fatality_rates_relative_to_Italy <- cbind.data.frame(names(age_data),
+                                              population_fatality_rate / population_fatality_rate[names(age_data) == "Italy"])
+
+names(population_fatality_rates_relative_to_Italy) <- c("Country", "fatality_rate")
+
+population_fatality_rates_relative_to_Italy[order(population_fatality_rates_relative_to_Italy[,2]),]
 ```
 
 ```{r}
-tests_cases_deaths_data %>%
-  filter(location == "Netherlands" |
-         location == "Sweden" |
-         location == "Italy",
-         date == "2020-05-06")
-
-library(shinySIR)
-
-run_shiny()
+median_age_data %>% filter(Country == "Russia")
 
 ```
 
