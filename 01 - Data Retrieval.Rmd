@@ -5,6 +5,8 @@ date: "5/8/2020"
 output: html_document
 ---
 
+Only the age data takes time to load, so just read in the Rds for that. Rest should be quick. 
+
 Retrieves the following data from various sources:
 
   1)  Age distribution by country
@@ -13,7 +15,7 @@ Retrieves the following data from various sources:
   4)  Overweight rates by country and gender
   5)  Government response data (needs to be re-run when required to keep up to date)
   6)  GDP (PPP) for each country
-  7)  Infection / Death proportions by age group (from Panda Model) (should be updated to take in latest data)
+  7)  Infection / Death proportions by age group (doesn't need to be updated often; just used for relative risks, not absolute)
 
 ```{r}
 library(tidyverse)
@@ -35,9 +37,9 @@ get_disposition_filename <- function(x) { # Function to get the file name of the
   sub(".*filename=", "", headers(x)$`content-disposition`)
 }
 
-# Takes ~ 15 minutes
-# Cote d'Ivoire is number 384, Curacao is 531, but both have unrecognised characters in name so just leaving them out for now
-# Monaco is number 492, contains no data so excluded.
+# Takes ~ 15 minutes and throws a lot of scary red text - rather just read in the Rds at the bottom of the chunk
+# Cote d'Ivoire is number 384, Curacao is 531, but both have unrecognised characters in name and can't be read in so just leaving them out for now
+# Monaco is number 492, contains no data and causes an error so excluded.
 # I don't think there are any locations with ID > 1000, so that's where I stop.
 
 for(i in c(1:383, 385:491, 493:531, 533:637, 639:1000)) {
@@ -55,10 +57,14 @@ for(i in c(1:383, 385:491, 493:531, 533:637, 639:1000)) {
   age_data[[substr(LOCATION, 1, nchar(LOCATION)-3)]] <- curr_data # Remove "csv" from location, store data to list
 }
 
-names(age_data)
+saveRDS(age_data, file = "age_data.Rds")
+
+age_data <- readRDS(file = "age_data.Rds")
 ```
 
-Get median age for each country - https://www.cia.gov/library/publications/resources/the-world-factbook/fields/343rank.html
+Now Get median age for each country - https://www.cia.gov/library/publications/resources/the-world-factbook/fields/343rank.html
+
+This is no longer used
 
 ```{r}
 median_age_raw <- read.delim(url("https://www.cia.gov/library/publications/resources/the-world-factbook/fields/rawdata_343.txt"))
@@ -69,7 +75,7 @@ median_age_raw <-  read.table(url("https://www.cia.gov/library/publications/reso
                                skip = 1,
                                stringsAsFactors = F)
 
-# Unfortunately, the above data doesn't read in well, so we need to do some cleaning:
+# Unfortunately, the above data doesn't read in well, so we need to do some cleaning (mainly merging columns together). Just run this:
 apply(median_age_raw, 2, function(x) trimws(x))
 
 median_age_raw[median_age_raw == ""] <- NA
@@ -106,16 +112,16 @@ tests_cases_deaths_data <-
   tests_cases_deaths_data %>%
     arrange(location, date)
 
-tests_cases_deaths_data[tests_cases_deaths_data$location == "United Kingdom",]
-tests_cases_deaths_data[tests_cases_deaths_data$location == "Spain",]
-tests_cases_deaths_data[tests_cases_deaths_data$location == "Italy",]
-
-
-sum(!is.na(tests_cases_deaths_data$total_tests))
-sum(!is.na(tests_cases_deaths_data$total_cases))
-sum(!is.na(tests_cases_deaths_data$total_deaths))
-
-(tests_cases_deaths_data[!is.na(tests_cases_deaths_data$total_tests),])[3000:4000,]
+# tests_cases_deaths_data[tests_cases_deaths_data$location == "United Kingdom",]
+# tests_cases_deaths_data[tests_cases_deaths_data$location == "Spain",]
+# tests_cases_deaths_data[tests_cases_deaths_data$location == "Italy",]
+# 
+# 
+# sum(!is.na(tests_cases_deaths_data$total_tests))
+# sum(!is.na(tests_cases_deaths_data$total_cases))
+# sum(!is.na(tests_cases_deaths_data$total_deaths))
+# 
+# (tests_cases_deaths_data[!is.na(tests_cases_deaths_data$total_tests),])[3000:4000,]
 
 ```
 
@@ -130,7 +136,7 @@ obesity_data <- obesity_data_raw[-c(1:3),]
 
 names(obesity_data) <- gsub(" ", "", obesity_data_raw[3,])
 
-# Only keep the point estimates. Some NAs de to missing data
+# Only keep the point estimates. Some NAs due to missing data
 obesity_data$Bothsexes <- as.numeric(substr(obesity_data$Bothsexes, 1, str_locate(obesity_data$Bothsexes, " ")[,1] - 1))
 obesity_data$Male <- as.numeric(substr(obesity_data$Male, 1, str_locate(obesity_data$Male, " ")[,1] - 1))
 obesity_data$Female <- as.numeric(substr(obesity_data$Female, 1, str_locate(obesity_data$Female, " ")[,1] - 1))
@@ -147,7 +153,7 @@ overweight_data <- overweight_data_raw[-c(1:3),]
 
 names(overweight_data) <- gsub(" ", "", overweight_data_raw[3,])
 
-# Only keep the point estimates. Some NAs de to missing data
+# Only keep the point estimates. Some NAs due to missing data
 overweight_data$Bothsexes <- as.numeric(substr(overweight_data$Bothsexes, 1, str_locate(overweight_data$Bothsexes, " ")[,1] - 1))
 overweight_data$Male <- as.numeric(substr(overweight_data$Male, 1, str_locate(overweight_data$Male, " ")[,1] - 1))
 overweight_data$Female <- as.numeric(substr(overweight_data$Female, 1, str_locate(overweight_data$Female, " ")[,1] - 1))
@@ -194,13 +200,14 @@ gdp_per_capita_ppp_data <-
 gdp_per_capita_ppp_data$gdp_estimate_ppp <- as.numeric(gsub(",", "", gdp_per_capita_ppp_data$gdp_estimate_ppp))
 ```
 
-# Proportion of deaths by age group. We use Sweden and Italy's statistics.
+# Calculate risk-adjusted age of countries using deaths per 100 000 by age group and population pyramids. We use Sweden, Netherlands and Italy's statistics.
 
 ```{r}
 age_data$Italy
 ```
 
 ```{r}
+# https://www.statista.com/statistics/1105061/coronavirus-deaths-by-region-in-italy/
 italy_deaths_by_age_group <- c(3, 0, 10, 53, 242, 972, 2935, 7738, 11162, 4287)
 
 # Using the age pyramid for Italy, let's get deaths 100000 for each 10-year age-band
@@ -276,9 +283,9 @@ relative_fatality_rates <- rowMeans(cbind.data.frame(deaths_per_hundred_thousand
                                                      deaths_per_hundred_thousand_by_age_group_sweden,
                                                      deaths_per_hundred_thousand_by_age_group_netherlands))
 
+
 population_fatality_rate <- c()
 
-                              
 for(i in names(age_data)) {
   temp_data <- as.data.frame(age_data[i])
   
@@ -290,17 +297,19 @@ for(i in names(age_data)) {
   
 }
 
-population_fatality_rates_relative_to_Italy <- cbind.data.frame(names(age_data),
-                                              population_fatality_rate / population_fatality_rate[names(age_data) == "Italy"])
+# Let's use Venezuela as the comparison point as it has a nice median age of 30.0. This is
+risk_adjusted_age <- cbind.data.frame(as.character(names(age_data)),
+                                              population_fatality_rate * 30 / population_fatality_rate[names(age_data) == "Venezuela"])
 
-names(population_fatality_rates_relative_to_Italy) <- c("Country", "fatality_rate")
+names(risk_adjusted_age) <- c("Country", "risk_adjusted_age")
 
-population_fatality_rates_relative_to_Italy[order(population_fatality_rates_relative_to_Italy[,2]),]
+risk_adjusted_age$Country <- as.character(risk_adjusted_age$Country)
+
+risk_adjusted_age[order(risk_adjusted_age[,2]),]
 ```
 
 ```{r}
 median_age_data %>% filter(Country == "Russia")
-
 ```
 
 

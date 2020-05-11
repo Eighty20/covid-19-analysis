@@ -12,7 +12,7 @@ library(caTools)
 library(GGally)
 ```
 
-# Let's set day one to be day of first case  in each country
+# For each country, get: date of first case, date where total_deaths_per_million crosses 0.1
 
 ```{r}
 sum(is.na(simple_model_data$total_cases))
@@ -25,9 +25,22 @@ simple_model_data <- simple_model_data[order(simple_model_data$Country),]
 
 simple_model_data$date <- as.Date(simple_model_data$date)
 
+# Start date
+
 start_date_by_country <- 
   as.vector(t((simple_model_data %>%
     filter(total_cases > 0) %>%
+    group_by(Country) %>%
+    filter(max(total_deaths_per_million) >= 0.1) %>%
+    slice(1) %>%
+    ungroup() %>%
+    select(date))[,1]))
+
+# CD/M > 0.1
+
+significant_deaths_start_date_by_country <- 
+  as.vector(t((simple_model_data %>%
+    filter(total_deaths_per_million >= 0.1) %>%
     group_by(Country) %>%
     slice(1) %>%
     ungroup() %>%
@@ -36,110 +49,20 @@ start_date_by_country <-
 group_sizes <- as.vector(t((simple_model_data %>%
     filter(total_cases > 0) %>%
     group_by(Country) %>%
+    filter(max(total_deaths_per_million) >= 0.1) %>%
     summarise(n = n()))[,2]))
 
 simple_model_data <- simple_model_data %>%
     filter(total_cases > 0) %>%
-    mutate(days_since_outbreak = date - as.Date(rep(start_date_by_country, group_sizes)))
-
-start_date_by_country <- 
-  as.vector(t((simple_model_data %>%
-    filter(total_cases > 0) %>%
     group_by(Country) %>%
-    slice(1) %>%
+    filter(max(total_deaths_per_million) >= 0.1) %>%
     ungroup() %>%
-    select(date))[,1]))
-
-group_sizes <- as.vector(t((simple_model_data %>%
-    filter(total_cases > 0) %>%
-    group_by(Country) %>%
-    summarise(n = n()))[,2]))
-
-simple_model_data <- simple_model_data %>%
-    filter(total_cases > 0) %>%
-    mutate(days_since_outbreak = date - as.Date(rep(start_date_by_country, group_sizes)))
+    mutate(days_since_outbreak = date - as.Date(rep(start_date_by_country, group_sizes)),
+           days_since_deaths_crossed_0.1_per_million = date - as.Date(rep(significant_deaths_start_date_by_country, group_sizes)))
 
 ```
 
-```{r}
-# Let's select 10 random countries to compare
-
-random_countries <- sample(unique(simple_model_data$Country), 1)
-
-simple_model_data_2 <- left_join(simple_model_data, tests_cases_deaths_data %>% select (location, date, new_deaths_per_million) %>% rename(Country = location) %>% mutate(date = as.Date(date)))
-
-death_curves <- list()
-
-canada_data <- simple_model_data_2 %>% filter(Country == "Canada")
-
-canada_smooth <- cbind.data.frame(loess.smooth(x = canada_data$days_since_outbreak, y = canada_data$new_deaths_per_million, span = 2/3)$x,
-                                  loess.smooth(x = canada_data$days_since_outbreak, y = canada_data$new_deaths_per_million, span = 0.1)$y)
-
-names(canada_smooth) <- c("x", "y")
-
-ggplot(data = canada_smooth,
-       aes(x = x, y = y)) +
-  geom_line()
-
-ggplot(data = canada_data,
-       aes(x = days_since_outbreak, y = runmean(new_deaths_per_million, 5))) +
-  geom_line()
-
-simple_model_data
-
-for(i in unique(simple_model_data$Country)) {
-  death_curves[[i]] <- ggplot(data = simple_model_data_2 %>% filter(Country == i),
-                              aes(x = days_since_outbreak, y = new_deaths_per_million, color = Country)) +
-    geom_line() +
-    geom_point() +
-    geom_line(data = simple_model_data_2 %>% filter(Country == i),
-              aes(x = days_since_outbreak, y = runmean(new_deaths_per_million, 5, align = "right"), color = "5-day rolling average"))
-}
-
-death_curves[1:20]
-```
-
-```{r}
-death_curves[21:40]
-```
-
-```{r}
-death_curves[41:60]
-```
-
-```{r}
-death_curves[21:80]
-```
-
-```{r}
-death_curves[21:100]
-```
-
-```{r}
-death_curves[21:120]
-```
-
-```{r}
-death_curves[121:140]
-```
-
-```{r}
-death_curves[141:160]
-```
-
-```{r}
-death_curves[161:180]
-```
-
-```{r}
-death_curves[181:200]
-```
-
-```{r}
-death_curves[201:220]
-```
-
-# Add rolling 5-day averages to data
+# Add rolling 5-day averages to data and add a flag for if peak has been reached based on the moving average.
 
 ```{r}
 deaths_5_day_averages <- c()
@@ -179,11 +102,84 @@ tests_cases_deaths_data_2 <- tests_cases_deaths_data %>%
   rename(Country = location) %>%
   cbind.data.frame(deaths_5_day_averages, infections_5_day_averages, peak_deaths_already_occurred_indicator, peak_cases_already_occurred_indicator)
 
-simple_model_data <- left_join(simple_model_data, tests_cases_deaths_data_2 %>% select(Country,
-                                                                                        date,
-                                                                                        deaths_5_day_averages,
-                                                                                        infections_5_day_averages,
-                                                                                        peak_deaths_already_occurred_indicator,
-                                                                                        peak_cases_already_occurred_indicator))
+simple_model_data <- left_join(simple_model_data,
+                               tests_cases_deaths_data_2 %>%
+                                 select(Country,
+                                        date,
+                                        deaths_5_day_averages,
+                                        infections_5_day_averages,
+                                        peak_deaths_already_occurred_indicator,
+                                        peak_cases_already_occurred_indicator) %>%
+                                 mutate(date = as.Date(date)))
+```
+
+```{r}
+# Let's select 10 random countries to compare
+
+random_countries <- sample(unique(simple_model_data$Country), 1)
+
+simple_model_data_2 <- left_join(simple_model_data %>%
+                                   filter(population_size >= 3 & peak_deaths_already_occurred_indicator == 1) %>%
+                                   group_by(Country) %>%
+                                   filter(max(total_deaths) >= 50) %>%
+                                   ungroup(),
+                                 tests_cases_deaths_data %>%
+                                   select (location, date, new_deaths_per_million) %>%
+                                   rename(Country = location) %>%
+                                   mutate(date = as.Date(date)))
+
+death_curves <- list()
+death_curves_by_threshold <- list()
+
+canada_data <- simple_model_data_2 %>% filter(Country == "Canada")
+
+ggplot(data = canada_data,
+       aes(x = days_since_outbreak, y = runmean(new_deaths_per_million, 5))) +
+  geom_line()
+
+for(i in unique(simple_model_data_2$Country)) {
+  death_curves[[i]] <- ggplot(data = simple_model_data_2 %>% filter(Country == i),
+                              aes(x = days_since_outbreak, y = new_deaths_per_million, color = Country)) +
+    geom_line() +
+    geom_point() +
+    geom_line(data = simple_model_data_2 %>% filter(Country == i),
+              aes(x = days_since_outbreak, y = runmean(new_deaths_per_million, 5, align = "right"), color = "5-day rolling average"))
+  
+    death_curves_by_threshold[[i]] <- ggplot(data = simple_model_data_2 %>% filter(Country == i),
+                              aes(x = days_since_deaths_crossed_0.1_per_million, y = new_deaths_per_million, color = Country)) +
+    geom_line() +
+    geom_point() +
+    geom_line(data = simple_model_data_2 %>% filter(Country == i),
+              aes(x = days_since_deaths_crossed_0.1_per_million, y = runmean(new_deaths_per_million, 5, align = "right"), color = "5-day rolling average"))
+}
+
+# Comparing these two graphs, it seems days_since_deaths_crossed_0.1_per_million brings peaks closer together, so is probably preferable
+simple_model_data_2 %>%
+  group_by(Country) %>%
+  filter(deaths_5_day_averages == max(deaths_5_day_averages)) %>%
+  ggplot(aes(x = days_since_outbreak)) +
+    geom_density()
+
+simple_model_data_2 %>%
+  group_by(Country) %>%
+  filter(deaths_5_day_averages == max(deaths_5_day_averages)) %>%
+  ggplot(aes(x = days_since_deaths_crossed_0.1_per_million)) +
+    geom_density()
+```
+
+```{r}
+death_curves[1:20]
+```
+
+```{r}
+death_curves[21:40]
+```
+
+```{r}
+death_curves_by_threshold[1:20]
+```
+
+```{r}
+death_curves_by_threshold[21:40]
 ```
 

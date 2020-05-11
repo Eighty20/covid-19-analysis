@@ -15,7 +15,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # Step 1 - Find the country name discrepencies
 
-For now, we're just merging median_age_data, obesity_data, gdp_data, and tests_cases
+For now, we're just merging age data, obesity data, gdp data, and tests_cases_deaths data
 
 ```{r}
 length(unique(tests_cases_deaths_data$location))
@@ -118,36 +118,36 @@ simple_model_data <- full_join(simple_model_data, gdp_per_capita_ppp_data)
 setdiff(simple_model_data$Country, population_fatality_rates_relative_to_Italy$Country)[order(setdiff(simple_model_data$Country, population_fatality_rates_relative_to_Italy$Country))]
 setdiff(population_fatality_rates_relative_to_Italy$Country, simple_model_data$Country)[order(setdiff(population_fatality_rates_relative_to_Italy$Country, simple_model_data$Country))]
 
-population_fatality_rates_relative_to_Italy$Country[population_fatality_rates_relative_to_Italy$Country == "BruneiDarussalam"] <- "Brunei"
-population_fatality_rates_relative_to_Italy$Country[population_fatality_rates_relative_to_Italy$Country == "CaboVerde"] <- "CapeVerde"
-population_fatality_rates_relative_to_Italy$Country[population_fatality_rates_relative_to_Italy$Country == "ChinaMacaoSAR"] <- "Macau"
-population_fatality_rates_relative_to_Italy$Country[population_fatality_rates_relative_to_Italy$Country == "ChinaHongKongSAR"] <- "HongKong"
-population_fatality_rates_relative_to_Italy$Country[population_fatality_rates_relative_to_Italy$Country == "DemPeoplesRepublicofKorea"] <- "NorthKorea"
-population_fatality_rates_relative_to_Italy$Country[population_fatality_rates_relative_to_Italy$Country == "DRCongo"] <- "DemocraticRepublicofCongo"
-population_fatality_rates_relative_to_Italy$Country[population_fatality_rates_relative_to_Italy$Country == "GuineaBissau"] <- "Guinea-Bissau"
-population_fatality_rates_relative_to_Italy$Country[population_fatality_rates_relative_to_Italy$Country == "RepublicofKorea"] <- "SouthKorea"
-population_fatality_rates_relative_to_Italy$Country[population_fatality_rates_relative_to_Italy$Country == "RepublicofMoldova"] <- "Moldova"
-population_fatality_rates_relative_to_Italy$Country[population_fatality_rates_relative_to_Italy$Country == "RussianFederation"] <- "Russia"
+risk_adjusted_age$Country[risk_adjusted_age$Country == "BruneiDarussalam"] <- "Brunei"
+risk_adjusted_age$Country[risk_adjusted_age$Country == "CaboVerde"] <- "CapeVerde"
+risk_adjusted_age$Country[risk_adjusted_age$Country == "ChinaMacaoSAR"] <- "Macau"
+risk_adjusted_age$Country[risk_adjusted_age$Country == "ChinaHongKongSAR"] <- "HongKong"
+risk_adjusted_age$Country[risk_adjusted_age$Country == "DemPeoplesRepublicofKorea"] <- "NorthKorea"
+risk_adjusted_age$Country[risk_adjusted_age$Country == "DRCongo"] <- "DemocraticRepublicofCongo"
+risk_adjusted_age$Country[risk_adjusted_age$Country == "GuineaBissau"] <- "Guinea-Bissau"
+risk_adjusted_age$Country[risk_adjusted_age$Country == "RepublicofKorea"] <- "SouthKorea"
+risk_adjusted_age$Country[risk_adjusted_age$Country == "RepublicofMoldova"] <- "Moldova"
+risk_adjusted_age$Country[risk_adjusted_age$Country == "RussianFederation"] <- "Russia"
 
-population_fatality_rates_relative_to_Italy$Country[population_fatality_rates_relative_to_Italy$Country == "StateofPalestine"] <- "Palestine"
-population_fatality_rates_relative_to_Italy$Country[population_fatality_rates_relative_to_Italy$Country == "SyrianArabRepublic"] <- "Syria"
-population_fatality_rates_relative_to_Italy$Country[population_fatality_rates_relative_to_Italy$Country == "TFYRMacedonia"] <- "Macedonia"
-population_fatality_rates_relative_to_Italy$Country[population_fatality_rates_relative_to_Italy$Country == "UnitedStatesofAmerica"] <- "UnitedStates"
-population_fatality_rates_relative_to_Italy$Country[population_fatality_rates_relative_to_Italy$Country == "UnitedStatesVirginIslands"] <- "VirginIslands"
-population_fatality_rates_relative_to_Italy$Country[population_fatality_rates_relative_to_Italy$Country == "VietNam"] <- "Vietnam"
-population_fatality_rates_relative_to_Italy$Country[population_fatality_rates_relative_to_Italy$Country == "TimorLeste"] <- "Timor"
+risk_adjusted_age$Country[risk_adjusted_age$Country == "StateofPalestine"] <- "Palestine"
+risk_adjusted_age$Country[risk_adjusted_age$Country == "SyrianArabRepublic"] <- "Syria"
+risk_adjusted_age$Country[risk_adjusted_age$Country == "TFYRMacedonia"] <- "Macedonia"
+risk_adjusted_age$Country[risk_adjusted_age$Country == "UnitedStatesofAmerica"] <- "UnitedStates"
+risk_adjusted_age$Country[risk_adjusted_age$Country == "UnitedStatesVirginIslands"] <- "VirginIslands"
+risk_adjusted_age$Country[risk_adjusted_age$Country == "VietNam"] <- "Vietnam"
+risk_adjusted_age$Country[risk_adjusted_age$Country == "TimorLeste"] <- "Timor"
 
-simple_model_data <- full_join(simple_model_data, population_fatality_rates_relative_to_Italy)
+simple_model_data <- full_join(simple_model_data, risk_adjusted_age)
 ```
 
-# Calculate population of each country
+# Calculate population of each country by comparing total cases to total cases per million.
 
 ```{r}
 
 simple_model_data <- simple_model_data[!is.na(simple_model_data$Country),]
 
 population_size <- c()
-
+i = "SouthAfrica"
 for(i in unique(simple_model_data$Country)) {
   temp_data <- simple_model_data %>% filter(Country == i)
   
