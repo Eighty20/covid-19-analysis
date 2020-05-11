@@ -17,6 +17,8 @@ Could use t as a choice before fitting the model, or as an independent variable.
 ```{r, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
+library(ciTools)
+
 simple_model_data %>% filter(Country == "SouthAfrica" & date == "2020-05-11")
 ```
 
