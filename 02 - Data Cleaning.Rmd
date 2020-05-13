@@ -12,7 +12,22 @@ This mainly involves fixing discrepencies in country names
 ```{r, include=F}
 knitr::opts_chunk$set(echo = TRUE)
 
+rm(list = ls())
 library(lubridate)
+library(tidyverse)
+```
+# Load Objects from 01
+
+```{r}
+age_data <- readRDS("01_Workspace/age_data.Rds")
+density_data <- readRDS("01_Workspace/density_data.Rds")
+gdp_per_capita_ppp_data <- readRDS("01_Workspace/gdp_per_capita_ppp_data.Rds")
+gov_response_data <- readRDS("01_Workspace/gov_response_data.Rds")
+median_age_data <- readRDS("01_Workspace/median_age_data.Rds")
+obesity_data <- readRDS("01_Workspace/obesity_data.Rds")
+overweight_data <- readRDS("01_Workspace/overweight_data.Rds")
+risk_adjusted_age <- readRDS("01_Workspace/risk_adjusted_age.Rds")
+tests_cases_deaths_data <- readRDS("01_Workspace/tests_cases_deaths_data.Rds")
 ```
 
 # Step 1 - Find the country name discrepencies
@@ -20,10 +35,10 @@ library(lubridate)
 For now, we're just merging age data, obesity data, gdp data, and tests_cases_deaths data
 
 ```{r}
-length(unique(tests_cases_deaths_data$location))
-length(unique(obesity_data$Country))
-length(unique(median_age_data$Country))
-length(unique(gdp_per_capita_ppp_data$Country))
+# length(unique(tests_cases_deaths_data$location))
+# length(unique(obesity_data$Country))
+# length(unique(median_age_data$Country))
+# length(unique(gdp_per_capita_ppp_data$Country))
 
 tests_cases_deaths_data$location <- gsub(" ", "", tests_cases_deaths_data$location)
 obesity_data$Country <- gsub(" ", "", obesity_data$Country)
@@ -31,9 +46,11 @@ gdp_per_capita_ppp_data$Country <- gsub(" ", "", gdp_per_capita_ppp_data$Country
 
 # Make obesity_data names correspond to tests_cases_deaths_data names
 
+# See what the differences are
 setdiff(obesity_data$Country, tests_cases_deaths_data$location)
 setdiff(tests_cases_deaths_data$location, obesity_data$Country)
 
+# Fix them
 obesity_data$Country[obesity_data$Country == "Bolivia(PlurinationalStateof)"] <- "Bolivia"
 obesity_data$Country[obesity_data$Country == "Venezuela(BolivarianRepublicof)"] <- "Venezuela"
 obesity_data$Country[obesity_data$Country == "UnitedKingdomofGreatBritainandNorthernIreland"] <- "UnitedKingdom"
@@ -56,6 +73,7 @@ obesity_data$Country[obesity_data$Country == "UnitedRepublicofTanzania"] <- "Tan
 obesity_data$Country[obesity_data$Country == "VietNam"] <- "Vietnam"
 obesity_data$Country[obesity_data$Country == "RepublicofKorea"] <- "NorthKorea"
 
+# Join the objects
 simple_model_data <- full_join(tests_cases_deaths_data %>% select(location, date,
                                                                   total_cases, total_cases_per_million,
                                                                   total_deaths, total_deaths_per_million) %>% rename(Country = location),
@@ -236,18 +254,26 @@ simple_model_data <-
                        LegacyStringencyIndex = LegacyStringencyIndexForDisplay))
 
 ```
+# Checking which is better of StringencyIndex and StringencyIndexForDisplay
 
 ```{r}
-sum(gov_response_data$StringencyIndex - gov_response_data$StringencyIndexForDisplay > 0, na.rm = T)
+# sum(gov_response_data$StringencyIndex - gov_response_data$StringencyIndexForDisplay > 0, na.rm = T)
+# 
+# sum(gov_response_data$LegacyStringencyIndex - gov_response_data$LegacyStringencyIndexForDisplay > 0, na.rm = T)
+# 
+# sum(is.na(gov_response_data$StringencyIndex))
+# sum(is.na(gov_response_data$StringencyIndexForDisplay))
+# sum(is.na(gov_response_data$StringencyIndexForDisplay) & !is.na(gov_response_data$StringencyIndex))
+# 
+# sum(is.na(gov_response_data$LegacyStringencyIndex))
+# sum(is.na(gov_response_data$LegacyStringencyIndexForDisplay))
+# sum(is.na(gov_response_data$LegacyStringencyIndexForDisplay) & !is.na(gov_response_data$LegacyStringencyIndex))
+```
 
-sum(gov_response_data$LegacyStringencyIndex - gov_response_data$LegacyStringencyIndexForDisplay > 0, na.rm = T)
+# Save important objects
 
-sum(is.na(gov_response_data$StringencyIndex))
-sum(is.na(gov_response_data$StringencyIndexForDisplay))
-sum(is.na(gov_response_data$StringencyIndexForDisplay) & !is.na(gov_response_data$StringencyIndex))
-
-sum(is.na(gov_response_data$LegacyStringencyIndex))
-sum(is.na(gov_response_data$LegacyStringencyIndexForDisplay))
-sum(is.na(gov_response_data$LegacyStringencyIndexForDisplay) & !is.na(gov_response_data$LegacyStringencyIndex))
+```{r}
+saveRDS(simple_model_data, "02_Workspace/simple_model_data.Rds")
+saveRDS(tests_cases_deaths_data, "02_Workspace/tests_cases_deaths_data.Rds")
 ```
 

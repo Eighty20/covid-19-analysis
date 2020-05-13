@@ -8,11 +8,20 @@ output: html_document
 ```{r, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
+rm(list = ls())
 library(caTools)
 library(GGally)
+library(tidyverse)
 ```
 
-# For each country, get: date of first case, date where total_deaths_per_million crosses 0.1
+# Load data
+
+```{r}
+simple_model_data <- readRDS("02_Workspace/simple_model_data.Rds")
+tests_cases_deaths_data <- readRDS("02_Workspace/tests_cases_deaths_data.Rds")
+```
+
+# For each country, get: date of first case, date (and gov response) when total_deaths_per_million crosses 0.1, 10 deaths data
 
 ```{r}
 sum(is.na(simple_model_data$total_cases))
@@ -144,13 +153,25 @@ simple_model_data <- left_join(simple_model_data,
                                  mutate(date = as.Date(date)))
 ```
 
+# Save Objects for part 4
+
+```{r}
+saveRDS(simple_model_data, "03_Workspace/simple_model_data.Rds")
+```
+
+
+
+
+# Look at the curves for countries that might make it into the model, see if their peaks we've found make sense
+
 ```{r}
 # Let's select 10 random countries to compare
 
 random_countries <- sample(unique(simple_model_data$Country), 1)
 
 simple_model_data_2 <- simple_model_data %>%
-                         filter(population_size >= 3 & peak_deaths_already_occurred_indicator == 1) %>%
+                         filter(population_size >= 3 &
+                                peak_deaths_already_occurred_indicator == 1) %>%
                          group_by(Country) %>%
                          filter(max(total_deaths) >= 50) %>%
                          ungroup()
@@ -158,19 +179,34 @@ simple_model_data_2 <- simple_model_data %>%
 death_curves <- list()
 death_curves_by_threshold <- list()
 
-canada_data <- simple_model_data_2 %>% filter(Country == "Canada")
-
-ggplot(data = canada_data,
-       aes(x = days_since_outbreak, y = runmean(new_deaths_per_million, 5))) +
-  geom_line()
+# canada_data <- simple_model_data_2 %>% filter(Country == "Canada")
+# 
+# ggplot(data = canada_data,
+#        aes(x = days_since_outbreak, y = runmean(new_deaths_per_million, 5))) +
+#   geom_line()
 
 for(i in unique(simple_model_data_2$Country)) {
   death_curves[[i]] <- ggplot(data = simple_model_data_2 %>% filter(Country == i),
-                              aes(x = days_since_outbreak, y = new_deaths_per_million, color = Country)) +
+                              aes(x = days_since_outbreak, y = new_deaths_per_million, color = paste0(Country, " Deaths"))) +
     geom_line() +
     geom_point() +
+    # geom_line(data = simple_model_data_2 %>% filter(Country == i), 
+    #           aes(x = days_since_outbreak, y = new_cases_per_million, color = paste0(Country, " Cases"))) +
     geom_line(data = simple_model_data_2 %>% filter(Country == i),
-              aes(x = days_since_outbreak, y = runmean(new_deaths_per_million, 5, align = "right"), color = "5-day rolling average"))
+              aes(x = days_since_outbreak, y = runmean(new_deaths_per_million, 5, align = "right"), color = "5-day rolling average")) +
+    # geom_line(data = simple_model_data_2 %>% filter(Country == i),
+    #           aes(x = days_since_outbreak, y = runmean(new_cases_per_million, 5, align = "right"), color = "5-day rolling average")) +
+    # geom_vline(xintercept = as.integer((simple_model_data_2 %>%
+    #              group_by(Country) %>%
+    #              filter(Country == i & runmean(new_cases_per_million, 5, align = "right") == max(runmean(new_cases_per_million, 5, align = "right"), na.rm = T)) %>%
+    #              ungroup() %>%
+    #              select(days_since_outbreak))[1,1])[1], linetype = "dashed") +
+    geom_vline(xintercept = as.integer((simple_model_data_2 %>%
+                 group_by(Country) %>%
+                 filter(Country == i & runmean(new_deaths_per_million, 5, align = "right") == max(runmean(new_deaths_per_million, 5, align = "right"), na.rm = T)) %>%
+                 ungroup() %>%
+                 select(days_since_outbreak))[1,1])[1], linetype = "dotted") +
+    theme(legend.title = element_blank())
   
     death_curves_by_threshold[[i]] <- ggplot(data = simple_model_data_2 %>% filter(Country == i),
                               aes(x = days_since_deaths_crossed_0.1_per_million, y = new_deaths_per_million, color = Country)) +
@@ -192,6 +228,23 @@ simple_model_data_2 %>%
   filter(deaths_5_day_averages == max(deaths_5_day_averages)) %>%
   ggplot(aes(x = days_since_deaths_crossed_0.1_per_million)) +
     geom_density()
+
+# simple_model_data_2 %>%
+#   group_by(Country) %>%
+#   mutate(event = case_when(deaths_5_day_averages == max(deaths_5_day_averages) ~ "Deaths_peak",
+#                            infections_5_day_averages == max(infections_5_day_averages) ~ "Cases_peak",
+#                            TRUE ~ "Nothing interesting")) %>%
+#   filter((deaths_5_day_averages == max(deaths_5_day_averages) |
+#          infections_5_day_averages == max(infections_5_day_averages)) &
+#          peak_deaths_already_occurred_indicator == 1 &
+#          peak_cases_already_occurred_indicator == 1) %>%
+#   select(Country, date, event) %>%
+#   group_by(Country, event) %>%
+#   slice(1) %>%
+#   ungroup() %>%
+#   pivot_wider(id_cols = Country, values_from = date, names_from = event) %>%
+#   ggplot(aes(x = Deaths_peak - Cases_peak)) +
+#     geom_density(bw = 3)
 ```
 
 ```{r}

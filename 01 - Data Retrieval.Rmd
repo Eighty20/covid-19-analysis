@@ -19,6 +19,7 @@ Retrieves the following data from various sources:
   8)  Population density data
 
 ```{r}
+rm(list = ls())
 library(tidyverse)
 library(httr)
 ```
@@ -32,7 +33,7 @@ age_data <- list()
 # So this cycles through what appears to be the possible range of location IDs (1:1000) and loads any data it finds.
 # This pics up 231 locations, mostly countries but also other regions.
 
-read.csv(url(paste0("https://www.populationpyramid.net/api/pp/", i, "/2019/?csv=true")))
+# read.csv(url(paste0("https://www.populationpyramid.net/api/pp/", i, "/2019/?csv=true")))
 
 get_disposition_filename <- function(x) { # Function to get the file name of the file downloaded by a given url
   sub(".*filename=", "", headers(x)$`content-disposition`)
@@ -58,9 +59,8 @@ for(i in c(1:383, 385:491, 493:531, 533:637, 639:1000)) {
   age_data[[substr(LOCATION, 1, nchar(LOCATION)-3)]] <- curr_data # Remove "csv" from location, store data to list
 }
 
-saveRDS(age_data, file = "age_data.Rds")
-
-age_data <- readRDS(file = "age_data.Rds")
+# If you'd rather just read it in, run this
+age_data <- readRDS(file = "01_Workspace/age_data.Rds")
 ```
 
 Now Get median age for each country - https://www.cia.gov/library/publications/resources/the-world-factbook/fields/343rank.html
@@ -315,9 +315,22 @@ median_age_data %>% filter(Country == "Russia")
 
 # Read in Vincent's density parameters
 
-
 ```{r}
 density_data <- read.csv("country_density_dat.csv")
+```
+
+# Save data
+
+```{r}
+saveRDS(age_data, file = "01_Workspace/age_data.Rds")
+saveRDS(density_data, "01_Workspace/density_data.Rds")
+saveRDS(gdp_per_capita_ppp_data, "01_Workspace/gdp_per_capita_ppp_data.Rds")
+saveRDS(gov_response_data, "01_Workspace/gov_response_data.Rds")
+saveRDS(median_age_data, "01_Workspace/median_age_data.Rds")
+saveRDS(obesity_data, "01_Workspace/obesity_data.Rds")
+saveRDS(overweight_data, "01_Workspace/overweight_data.Rds")
+saveRDS(risk_adjusted_age, "01_Workspace/risk_adjusted_age.Rds")
+saveRDS(tests_cases_deaths_data, "01_Workspace/tests_cases_deaths_data.Rds")
 ```
 
 
