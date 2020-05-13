@@ -16,6 +16,7 @@ Retrieves the following data from various sources:
   5)  Government response data (needs to be re-run when required to keep up to date)
   6)  GDP (PPP) for each country
   7)  Infection / Death proportions by age group (doesn't need to be updated often; just used for relative risks, not absolute)
+  8)  Population density data
 
 ```{r}
 library(tidyverse)
@@ -164,7 +165,7 @@ overweight_data$Female <- as.numeric(substr(overweight_data$Female, 1, str_locat
 ```{r}
 gov_response_data <- read.csv(url("https://raw.githubusercontent.com/OxCGRT/covid-policy-tracker/master/data/OxCGRT_latest.csv"))
 
-gov_response_data %>% filter(CountryName == "Brazil") %>% select(StringencyIndexForDisplay)
+gov_response_data %>% filter(CountryName == "Sweden")
 
 mean(gov_response_data$StringencyIndexForDisplay, na.rm = T)
 ```
@@ -310,6 +311,13 @@ risk_adjusted_age[order(risk_adjusted_age[,2]),]
 
 ```{r}
 median_age_data %>% filter(Country == "Russia")
+```
+
+# Read in Vincent's density parameters
+
+
+```{r}
+density_data <- read.csv("country_density_dat.csv")
 ```
 
 

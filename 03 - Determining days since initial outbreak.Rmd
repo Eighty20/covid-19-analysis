@@ -1,5 +1,5 @@
 ---
-title: "03 - Determing date of initial outbreak for each country"
+title: "03 - Alligning countries at different stages of "
 author: "Murray"
 date: "5/9/2020"
 output: html_document
@@ -36,6 +36,23 @@ start_date_by_country <-
     ungroup() %>%
     select(date))[,1]))
 
+# ten_deaths_date
+
+ten_deaths_date_by_country <- 
+  as.vector(t((simple_model_data %>%
+    filter(total_deaths_per_million >= 0.1) %>%
+    group_by(Country) %>%
+    mutate(date = case_when(max(total_deaths, na.rm = T) < 10 ~ as.Date("9999-12-31"),
+                            TRUE ~ date)) %>%
+    ungroup() %>%
+    filter(date == "9999-12-31" | total_deaths >= 10) %>%
+    group_by(Country) %>%
+    slice(1) %>%
+    ungroup() %>%
+    select(date))[,1]))
+
+ten_deaths_date_by_country[ten_deaths_date_by_country == "9999-12-31"] <- NA
+
 # CD/M > 0.1
 
 significant_deaths_start_date_by_country <- 
@@ -45,6 +62,16 @@ significant_deaths_start_date_by_country <-
     slice(1) %>%
     ungroup() %>%
     select(date))[,1]))
+
+# gov_response at time where CD/M goes past 0.1
+
+gov_response_snapshot_by_country <- 
+  as.vector(t((simple_model_data %>%
+    filter(total_deaths_per_million >= 0.1) %>%
+    group_by(Country) %>%
+    slice(1) %>%
+    ungroup() %>%
+    select(StringencyIndex))[,1]))
 
 group_sizes <- as.vector(t((simple_model_data %>%
     filter(total_cases > 0) %>%
@@ -58,7 +85,9 @@ simple_model_data <- simple_model_data %>%
     filter(max(total_deaths_per_million) >= 0.1) %>%
     ungroup() %>%
     mutate(days_since_outbreak = date - as.Date(rep(start_date_by_country, group_sizes)),
-           days_since_deaths_crossed_0.1_per_million = date - as.Date(rep(significant_deaths_start_date_by_country, group_sizes)))
+           days_since_deaths_crossed_0.1_per_million = date - as.Date(rep(significant_deaths_start_date_by_country, group_sizes)),
+           days_since_10_deaths = date - as.Date(rep(ten_deaths_date_by_country, group_sizes)),
+           gov_response_at_0.1_deaths_per_million = rep(gov_response_snapshot_by_country, group_sizes))
 
 ```
 
@@ -109,7 +138,9 @@ simple_model_data <- left_join(simple_model_data,
                                         deaths_5_day_averages,
                                         infections_5_day_averages,
                                         peak_deaths_already_occurred_indicator,
-                                        peak_cases_already_occurred_indicator) %>%
+                                        peak_cases_already_occurred_indicator,
+                                        new_deaths_per_million,
+                                        new_cases_per_million) %>%
                                  mutate(date = as.Date(date)))
 ```
 
@@ -118,15 +149,11 @@ simple_model_data <- left_join(simple_model_data,
 
 random_countries <- sample(unique(simple_model_data$Country), 1)
 
-simple_model_data_2 <- left_join(simple_model_data %>%
-                                   filter(population_size >= 3 & peak_deaths_already_occurred_indicator == 1) %>%
-                                   group_by(Country) %>%
-                                   filter(max(total_deaths) >= 50) %>%
-                                   ungroup(),
-                                 tests_cases_deaths_data %>%
-                                   select (location, date, new_deaths_per_million) %>%
-                                   rename(Country = location) %>%
-                                   mutate(date = as.Date(date)))
+simple_model_data_2 <- simple_model_data %>%
+                         filter(population_size >= 3 & peak_deaths_already_occurred_indicator == 1) %>%
+                         group_by(Country) %>%
+                         filter(max(total_deaths) >= 50) %>%
+                         ungroup()
 
 death_curves <- list()
 death_curves_by_threshold <- list()
@@ -168,18 +195,18 @@ simple_model_data_2 %>%
 ```
 
 ```{r}
-death_curves[1:20]
+death_curves[1:21]
 ```
 
 ```{r}
-death_curves[21:40]
+death_curves[22:42]
 ```
 
 ```{r}
-death_curves_by_threshold[1:20]
+death_curves_by_threshold[1:21]
 ```
 
 ```{r}
-death_curves_by_threshold[21:40]
+death_curves_by_threshold[22:42]
 ```
 

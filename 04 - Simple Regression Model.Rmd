@@ -24,27 +24,41 @@ simple_model_data %>% filter(Country == "SouthAfrica" & date == "2020-05-11")
 
 ```{r}
 model_variables <- simple_model_data %>%
-  group_by(Country, Obesity_rate, gdp_estimate_ppp, Median_Age, population_size, peak_deaths_already_occurred_indicator, risk_adjusted_age) %>%
-  filter(deaths_5_day_averages == max(deaths_5_day_averages)) %>%
-  summarise(deaths_per_million = max(total_deaths_per_million),
-            smooth_deaths_per_million = max(deaths_5_day_averages),
-            total_deaths = max(total_deaths)) %>%
-  filter(!is.na(Obesity_rate) & !is.na(gdp_estimate_ppp) & !is.na(Median_Age) & !is.na(deaths_per_million) & !is.na(risk_adjusted_age) &
-           peak_deaths_already_occurred_indicator == 1 &
-           population_size > 3 &
-           total_deaths > 50 &
-           Country != c("China")
-         )
+  group_by(Country, Obesity_rate, gdp_estimate_ppp, Median_Age, population_size, peak_deaths_already_occurred_indicator,
+           risk_adjusted_age, Density_km, Inequality_spatial_transformed, gov_response_at_0.1_deaths_per_million) %>%
+  mutate(total_deaths = max(total_deaths, na.rm = T)) %>%
+  filter(deaths_5_day_averages == max(deaths_5_day_averages, na.rm = T)) %>% # Just keeps the day(s) of the peak for each country
+  summarise(total_deaths_per_million = max(total_deaths_per_million, na.rm = T),
+            smooth_new_deaths_per_million = max(deaths_5_day_averages, na.rm = T),
+            total_deaths = max(total_deaths, na.rm = T)) %>%
+  filter(!is.na(Obesity_rate) &
+         #!is.na(gdp_estimate_ppp) &
+         !is.na(total_deaths_per_million) &
+         !is.na(risk_adjusted_age) &
+         !(is.na(Density_km)) &
+         !is.na(gov_response_at_0.1_deaths_per_million) &
+         peak_deaths_already_occurred_indicator == 1 &
+         population_size >= 3 &
+         total_deaths >= 50 &
+         Country != c("China")
+         ) %>%
+  mutate(combined_density_measure = Density_km * Inequality_spatial_transformed)
 
 # Check distributions of independent variables
-# ggplot(data = model_variables, aes(x = Obesity_rate)) +
-#   geom_density()
-# 
-# ggplot(data = model_variables, aes(x = risk_adjusted_age)) +
-#   geom_density()
-# 
-# ggplot(data = model_variables, aes(x = gdp_estimate_ppp)) +
-#   geom_density()
+ggplot(data = model_variables, aes(x = Obesity_rate)) +
+  geom_density()
+
+ggplot(data = model_variables, aes(x = risk_adjusted_age)) +
+  geom_density()
+
+ggplot(data = model_variables, aes(x = gdp_estimate_ppp)) +
+  geom_density()
+
+ggplot(data = model_variables, aes(x = Inequality_spatial_transformed)) +
+  geom_density()
+
+ggplot(data = model_variables, aes(x = log(Inequality_spatial_transformed))) +
+  geom_density()
 # 
 # ggplot(data = model_variables, aes(x = log(risk_adjusted_age))) +
 #   geom_density()
@@ -85,21 +99,50 @@ summary(m1)
 ```
 
 ```{r}
+m1 <- glm(data = model_variables, family = Gamma("log"), formula = deaths_per_million ~ risk_adjusted_age)
+
 m2 <- glm(data = model_variables, family = Gamma("log"), formula = deaths_per_million ~ Obesity_rate + risk_adjusted_age + gdp_estimate_ppp)
 
+m3 <- glm(data = model_variables, family = Gamma("log"),
+          formula = deaths_per_million ~ Obesity_rate + risk_adjusted_age + Inequality_spatial_transformed)
+
+m3b <- glm(data = model_variables, family = Gamma("log"),
+          formula = deaths_per_million ~ Obesity_rate + Inequality_spatial_transformed)
+
+m3c <- glm(data = model_variables, family = Gamma("log"),
+          formula = deaths_per_million ~ Obesity_rate + risk_adjusted_age + combined_density_measure)
+
+m4 <- glm(data = model_variables, family = Gamma("log"), formula = deaths_per_million ~ Obesity_rate + risk_adjusted_age + gov_response_at_0.1_deaths_per_million)
+
+m5 <- glm(data = model_variables, family = Gamma("log"),
+          formula = deaths_per_million ~ Obesity_rate + risk_adjusted_age + gov_response_at_0.1_deaths_per_million + Inequality_spatial_transformed)
+
+m5b <- glm(data = model_variables, family = Gamma("log"),
+          formula = deaths_per_million ~ Obesity_rate + risk_adjusted_age + gdp_estimate_ppp + gov_response_at_0.1_deaths_per_million + Inequality_spatial_transformed)
+
+summary(m1)
 summary(m2)
+summary(m3)
+summary(m3b)
+summary(m3c)
+summary(m4)
+summary(m5)
+summary(m5b)
 ```
 
 ```{r}
+32.727/57.006
+20.619/57.006
+
 simple_model_data %>% filter(!(Country %in% model_variables$Country) & date == "2020-05-11") %>%
   select(Country, total_deaths_per_million) %>%
   cbind.data.frame(predictions)
 
-predict.glm(m2, newdata = simple_model_data %>% filter((Country == "SouthAfrica") & date == "2020-05-11"), se.fit = T, type = "response")
+predict.glm(m3b, newdata = simple_model_data %>% filter((Country == "SouthAfrica") & date == "2020-05-11"), se.fit = T, type = "response")
 
 predictions_vs_actual <- add_pi(tb = simple_model_data %>%
                                   filter(!(Country %in% model_variables$Country) & date == "2020-05-11") %>%
-                                  mutate(deaths_per_million = 0), fit = m2) %>%
+                                  mutate(deaths_per_million = 0), fit = m5) %>%
   select(Country, total_deaths_per_million, pred, LPB0.025, UPB0.975)
 
 # 
@@ -108,6 +151,10 @@ predictions_vs_actual <- add_pi(tb = simple_model_data %>%
 #     geom_ribbon(aes(ymin = LPB0.025, ymax = UPB0.975), alpha = 0.2) +
 #     lims(y = c(0, 300))
 
+cbind.data.frame(model_variables %>% ungroup %>% select(Country, deaths_per_million), m5$fitted.values)
+m5$R
+
+cor(model_variables %>% ungroup() %>% select(Obesity_rate, risk_adjusted_age, gdp_estimate_ppp, gov_response_at_0.1_deaths_per_million, Density_km, Inequality_spatial_transformed)) %>% View()
 ```
 
 ```{r}
@@ -136,20 +183,24 @@ summary(m7)
 
 
 ```{r}
-ggplot(data = model_variables, aes(x = m2$fitted.values, y = deaths_per_million)) + 
+ggplot(data = model_variables, aes(x = m1$fitted.values, y = deaths_per_million)) + 
   geom_point() +
   geom_text(aes(label = Country), size = 3, check_overlap = T, nudge_y = 7) +
-  geom_line(aes(y = seq(0, 300, length.out = 31), x = seq(0, 300, length.out = 31)), linetype = "dashed") +
-  labs(title = "deaths_per_million ~ Obesity_rate + risk_adjusted_age + gdp_per_capita_ppp",
+  geom_line(aes(y = seq(0, 300, length.out = dim(model_variables)[1]), x = seq(0, 300, length.out = dim(model_variables)[1])), linetype = "dashed") +
+  labs(title = "deaths_per_million ~ Obesity_rate + risk_adjusted_age",
+       subtitle = "For countries that have observed a peak in deaths and have population > 3 million",
+       x = "Fitted Values",
+       y = "Actual Values")
+ggplot(data = model_variables, aes(x = m5$fitted.values, y = deaths_per_million)) + 
+  geom_point() +
+  geom_text(aes(label = Country), size = 3, check_overlap = T, nudge_y = 7) +
+  geom_line(aes(y = seq(0, 300, length.out = dim(model_variables)[1]), x = seq(0, 300, length.out = dim(model_variables)[1])), linetype = "dashed") +
+  labs(title = "DPM ~ Obesity_rate + risk_adjusted_age + gov_response + spatial_inequality",
        subtitle = "For countries that have observed a peak in deaths and have population > 3 million",
        x = "Fitted Values",
        y = "Actual Values")
 ```
 
-```{r}
-ggplot(data = model_variables %>% filter(deaths_per_million > 0), aes(x = m2$fitted.values, y = deaths_per_million)) + 
-  geom_point()
-```
 
 
 ```{r}

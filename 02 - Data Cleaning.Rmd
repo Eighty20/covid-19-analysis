@@ -11,6 +11,8 @@ This mainly involves fixing discrepencies in country names
 
 ```{r, include=F}
 knitr::opts_chunk$set(echo = TRUE)
+
+library(lubridate)
 ```
 
 # Step 1 - Find the country name discrepencies
@@ -58,6 +60,11 @@ simple_model_data <- full_join(tests_cases_deaths_data %>% select(location, date
                                                                   total_cases, total_cases_per_million,
                                                                   total_deaths, total_deaths_per_million) %>% rename(Country = location),
                                obesity_data %>% select(Country, Bothsexes) %>% rename(Obesity_rate = Bothsexes))
+
+# simple_model_data <-
+#   simple_model_data %>%
+#     left_join(tests_cases_deaths_data %>%
+#                 select(location, date, ))
 ```
 
 ```{r}
@@ -145,18 +152,21 @@ simple_model_data <- full_join(simple_model_data, risk_adjusted_age)
 ```{r}
 
 simple_model_data <- simple_model_data[!is.na(simple_model_data$Country),]
+simple_model_data <- simple_model_data[order(simple_model_data$Country),]
 
 population_size <- c()
 i = "SouthAfrica"
 for(i in unique(simple_model_data$Country)) {
   temp_data <- simple_model_data %>% filter(Country == i)
   
-  if(is.na(max(temp_data$total_cases)) |
+  if(sum(!is.na(temp_data$total_cases)) == 0 |
      max(temp_data$total_cases) == 0 |
-     is.na(max(temp_data$total_cases_per_million))) {
+     sum(!is.na(temp_data$total_cases_per_million)) == 0) {
     population_size <- c(population_size, rep(0, length(temp_data$total_cases)))
   } else(
-    population_size <- c(population_size, rep(max(temp_data$total_cases) / max(temp_data$total_cases_per_million), length(temp_data$total_cases)))
+    population_size <- c(population_size, rep(max(temp_data$total_cases, na.rm = T) /
+                                                max(temp_data$total_cases_per_million, na.rm = T),
+                                              length(temp_data$total_cases)))
   )
 }
 
@@ -164,5 +174,80 @@ sum(is.na(population_size))
 
 simple_model_data <- cbind.data.frame(simple_model_data, population_size)
 
+simple_model_data %>% group_by(Country, population_size) %>% distinct(Country, population_size)
+```
+
+# Join density data
+
+```{r}
+names(density_data)[2] <- "Country"
+names(density_data)[6] <- "Density_km"
+density_data$Country <- gsub(" ", "", density_data$Country)
+
+setdiff(density_data$Country, simple_model_data$Country)
+setdiff(simple_model_data$Country, density_data$Country)
+
+simple_model_data %>% filter(Country == "MicronesiaFedStatesof" | Country == "Micronesia")
+
+density_data$Country[density_data$Country == "Bahamas,The"] <- "Bahamas"
+density_data$Country[density_data$Country == "FederatedStatesofMicronesia"] <- "Micronesia"
+density_data$Country[density_data$Country == "Gambia,The"] <- "Gambia"
+density_data$Country[density_data$Country == "IvoryCoast"] <- "Coted'Ivoire"
+density_data$Country[density_data$Country == "PacificIslands(Palau)"] <- "Palau"
+density_data$Country[density_data$Country == "St.KittsandNevis"] <- "SaintKittsandNevis"
+density_data$Country[density_data$Country == "St.Lucia"] <- "SaintLucia"
+density_data$Country[density_data$Country == "St.VincentandtheGrenadines"] <- "SaintVincentandtheGrenadines"
+density_data$Country[density_data$Country == "Tanzania,UnitedRepublicof"] <- "Tanzania"
+density_data$Country[density_data$Country == "WesternSamoa"] <- "Samoa"
+
+density_data$Inequality_spatial_transformed <- 1 / (1 - density_data$inequality)
+
+simple_model_data <-
+  simple_model_data %>%
+    left_join(density_data %>%
+                select(Country, Density_km, Inequality_spatial_transformed))
+
+```
+
+# Join government response data
+
+```{r}
+gov_response_data$CountryName <- gsub(" ", "", gov_response_data$CountryName)
+
+names(gov_response_data)[c(1, 3)] <- c("Country", "date")
+
+setdiff(unique(gov_response_data$Country), unique(simple_model_data$Country))
+setdiff(unique(simple_model_data$Country), unique(gov_response_data$Country))
+
+gov_response_data$Country[gov_response_data$Country == "Macao"] <- "Macau"
+gov_response_data$Country[gov_response_data$Country == "KyrgyzRepublic"] <- "Kyrgyzstan"
+gov_response_data$Country[gov_response_data$Country == "SlovakRepublic"] <- "Slovakia"
+gov_response_data$Country[gov_response_data$Country == "Eswatini"] <- "Swaziland"
+
+gov_response_data$date <- ymd(gov_response_data$date)
+
+simple_model_data$date <- as.Date(simple_model_data$date)
+
+simple_model_data <- 
+  simple_model_data %>%
+    left_join(gov_response_data %>%
+                select(-CountryCode, -ConfirmedCases, -ConfirmedDeaths, -StringencyIndex, -LegacyStringencyIndex) %>%
+                rename(StringencyIndex = StringencyIndexForDisplay,
+                       LegacyStringencyIndex = LegacyStringencyIndexForDisplay))
+
+```
+
+```{r}
+sum(gov_response_data$StringencyIndex - gov_response_data$StringencyIndexForDisplay > 0, na.rm = T)
+
+sum(gov_response_data$LegacyStringencyIndex - gov_response_data$LegacyStringencyIndexForDisplay > 0, na.rm = T)
+
+sum(is.na(gov_response_data$StringencyIndex))
+sum(is.na(gov_response_data$StringencyIndexForDisplay))
+sum(is.na(gov_response_data$StringencyIndexForDisplay) & !is.na(gov_response_data$StringencyIndex))
+
+sum(is.na(gov_response_data$LegacyStringencyIndex))
+sum(is.na(gov_response_data$LegacyStringencyIndexForDisplay))
+sum(is.na(gov_response_data$LegacyStringencyIndexForDisplay) & !is.na(gov_response_data$LegacyStringencyIndex))
 ```
 
