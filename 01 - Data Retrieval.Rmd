@@ -107,6 +107,7 @@ This needs to be updated regularly.
 
 ```{r}
 tests_cases_deaths_data <- read.csv(url("https://covid.ourworldindata.org/data/owid-covid-data.csv"))
+
 tests_cases_deaths_data <- 
   tests_cases_deaths_data %>%
     arrange(location, date)

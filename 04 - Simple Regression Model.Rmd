@@ -194,7 +194,7 @@ ggplot(data = model_variables, aes(x = m5$fitted.values, y = total_deaths_per_mi
   geom_point() +
   geom_text(aes(label = Country), size = 3, check_overlap = T, nudge_y = 7) +
   geom_line(aes(y = seq(0, 300, length.out = dim(model_variables)[1]), x = seq(0, 300, length.out = dim(model_variables)[1])), linetype = "dashed") +
-  labs(title = "Total_DPM ~ Obesity_rate + age_adjusted_risk + gov_response + spatial_inequality",
+  labs(title = "Total_DPM ~ Obesity_rate + age_adjusted_risk + gov_resp + spatial_inequality",
        subtitle = "For countries that have observed a peak in deaths and have > 50 deaths in total",
        x = "Fitted Values",
        y = "Actual Values")

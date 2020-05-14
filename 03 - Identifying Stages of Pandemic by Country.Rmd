@@ -229,10 +229,18 @@ death_curves[22:42]
 ```
 
 ```{r}
+death_curves[43:64]
+```
+
+```{r}
 death_curves_starting_at_0.1_dpm[1:21]
 ```
 
 ```{r}
 death_curves_starting_at_0.1_dpm[22:42]
+```
+
+```{r}
+death_curves_starting_at_0.1_dpm[43:64]
 ```
 
