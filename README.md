@@ -22,10 +22,18 @@ And creates a number of new fields, based on the above data:
   11) deaths_5_day_averages, infections_5_day_averages - Average of deaths per day and average of cases per day over previous 4 days and current day.
   12) peak_deaths_already_occurred_indicator (& peak_cases_already_occurred_indicator) - 1 if deaths_5_day_averages (& infections_5_day_averages) had its maximum at least 4 days before last day of data, 0 otherwise.
 
-If you wish to update the data yourself to include new data from sources (1) and (6), simply run the first 3 scripts in this repository. This will fetch the latest data from those sources and recalculate (7) - (12).
+If you wish to update the data yourself to include new data from sources (1) and (6), simply run the first 3 scripts in this repository (Data Retrieval, Data Cleaning, Identifying Stages of Pandemic by Country). This will fetch the latest data from those sources and recalculate (7) - (12).
 
 *This inequality measure (ineq) ranges from 0 to 1 in country_density_dat.csv, with 0 being completely equal spread and 1 being completely unequal spread. In full_dataset_for_modelling.csv this measure has been transformed to be 1 / (1 - ineq).
 
 ## About the Simple Regression Model
 
 This script shows the results of some linear models that attempt to explain the cumulative number of deaths at the time of the peak for a given country, using some combination of fields from our dataset.
+
+## About expected_deaths_per_country_using_diamond_princess_data.xlsx
+
+This is up to date as of 19 May at 11:30am
+
+This file compares the current total number of deaths in each country to the final number of deaths expected based on data from the Diamond Princess cruise ship.
+
+If you wish to update this file to include the latest data, you must run scripts "01 - Data Retrieval.rmd", "02 - Data Cleaning.rmd", and then "0x - Diamond Princess.rmd".

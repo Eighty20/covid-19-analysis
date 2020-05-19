@@ -20,7 +20,7 @@ age_data <- readRDS("01_Workspace/age_data.Rds")
 covid_data <- readRDS("02_Workspace/tests_cases_deaths_data.Rds")
 ```
 
-# Enter in Diamond Princess (dp) data
+# Enter in Diamond Princess (dp) data - https://www.medrxiv.org/content/10.1101/2020.03.05.20031773v2.full.pdf - page 5
 
 ```{r}
 # 0-9, 10-19, ..., 80-89
@@ -61,7 +61,7 @@ names(age_data)[names(age_data) == "WORLD"] <- "World"
 # Estimate total deaths per country using dp data
 
 ```{r}
-full_data <- rbind.data.frame(rep(0, 145))[-1,]
+full_data <- rbind.data.frame(rep(0, 7 + as.numeric(max(as.Date(covid_data$date)) - as.Date("2019-12-31"))))[-1,]
 
 for(i in intersect(covid_data$location, names(age_data))) {
   curr_age_data <- diff(c(0, cumsum(rowSums((age_data[[i]])[,2:3]))[c(2, 4, 6, 8, 10, 12, 14, 16, 21)]))
@@ -71,18 +71,21 @@ for(i in intersect(covid_data$location, names(age_data))) {
   curr_data <-
     covid_data %>%
       mutate(expected_final_deaths = curr_final_deaths,
-             expected_final_deaths_per_person = NA) %>%
+             expected_final_deaths_per_person = NA,
+             note = "New deaths each day:") %>%
       group_by(location) %>%
       mutate(current_total_deaths = max(total_deaths)) %>%
-      select(location, current_total_deaths, expected_final_deaths, population, expected_final_deaths_per_person, date, new_deaths) %>%
+      select(location, current_total_deaths, expected_final_deaths, population, expected_final_deaths_per_person, note, date, new_deaths) %>%
       ungroup() %>%
       pivot_wider(names_from = date, values_from = new_deaths) %>%
       filter(location == i) %>%
-      mutate(expected_final_deaths_per_person = expected_final_deaths / population)
+      mutate(expected_final_deaths_per_person = expected_final_deaths / sum(rowSums((age_data[[i]])[,2:3])))
   
   names(full_data) <- names(curr_data)
   full_data <- rbind(full_data, curr_data)
 }
+
+full_data <- full_data[,c(1:6, 6 + order(as.Date(names(full_data)[7:length(names(full_data))])))]
 
 write.xlsx(full_data, file = "expected_deaths_per_country_using_diamond_princess_data.xlsx")
 ```
