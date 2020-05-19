@@ -56,6 +56,7 @@ names(age_data)[names(age_data) == "TFYRMacedonia"] <- "Macedonia"
 names(age_data)[names(age_data) == "TimorLeste"] <- "Timor"
 names(age_data)[names(age_data) == "VietNam"] <- "Vietnam"
 names(age_data)[names(age_data) == "WORLD"] <- "World"
+names(age_data)[names(age_data) == "UnitedStatesofAmerica"] <- "UnitedStates"
 ```
 
 # Estimate total deaths per country using dp data
