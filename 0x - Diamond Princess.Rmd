@@ -1,0 +1,88 @@
+---
+title: "0x - Diamond Princess"
+author: "Murray"
+date: "5/19/2020"
+output: html_document
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+rm(list = ls())
+library(tidyverse)
+library(openxlsx)
+```
+
+# Read in the population pyramids and Covid-19 spread data
+
+```{r}
+age_data <- readRDS("01_Workspace/age_data.Rds")
+covid_data <- readRDS("02_Workspace/tests_cases_deaths_data.Rds")
+```
+
+# Enter in Diamond Princess (dp) data
+
+```{r}
+# 0-9, 10-19, ..., 80-89
+dp_passengers_by_age_group <- c(16, 23, 347, 428, 334, 398, 923, 1015, 216)
+sum(dp_passengers_by_age_group)
+
+dp_symp_cases_per_age_group <- c(0, 2, 25, 27, 19, 28, 76, 95, 29)
+sum(dp_symp_cases_per_age_group)
+
+dp_expected_deaths_per_age_group_using_nCFR <- c(0, 0, 0.05, 0.06, 0.08, 0.36, 2.74, 7.6, 4.28)
+sum(dp_expected_deaths_per_age_group_using_nCFR)
+
+# plot(y = dp_symp_cases / dp_passengers_by_age_group, x = 1:9)
+```
+
+# Check country names of the two data sources align
+
+```{r}
+setdiff(covid_data$location, names(age_data))[order(setdiff(covid_data$location, names(age_data)))]
+setdiff(names(age_data), covid_data$location)[order(setdiff(names(age_data), covid_data$location))]
+
+names(age_data)[names(age_data) == "BruneiDarussalam"] <- "Brunei"
+names(age_data)[names(age_data) == "CaboVerde"] <- "CapeVerde"
+names(age_data)[names(age_data) == "ChinaHongKongSAR"] <- "HongKong"
+names(age_data)[names(age_data) == "DRCongo"] <- "DemocraticRepublicofCongo"
+names(age_data)[names(age_data) == "GuineaBissau"] <- "Guinea-Bissau"
+names(age_data)[names(age_data) == "RepublicofKorea"] <- "SouthKorea"
+names(age_data)[names(age_data) == "RepublicofMoldova"] <- "Moldova"
+names(age_data)[names(age_data) == "RussianFederation"] <- "Russia"
+names(age_data)[names(age_data) == "StateofPalestine"] <- "Palestine"
+names(age_data)[names(age_data) == "SyrianArabRepublic"] <- "Syria"
+names(age_data)[names(age_data) == "TFYRMacedonia"] <- "Macedonia"
+names(age_data)[names(age_data) == "TimorLeste"] <- "Timor"
+names(age_data)[names(age_data) == "VietNam"] <- "Vietnam"
+names(age_data)[names(age_data) == "WORLD"] <- "World"
+```
+
+# Estimate total deaths per country using dp data
+
+```{r}
+full_data <- rbind.data.frame(rep(0, 145))[-1,]
+
+for(i in intersect(covid_data$location, names(age_data))) {
+  curr_age_data <- diff(c(0, cumsum(rowSums((age_data[[i]])[,2:3]))[c(2, 4, 6, 8, 10, 12, 14, 16, 21)]))
+  
+  curr_final_deaths <- sum(curr_age_data * dp_expected_deaths_per_age_group_using_nCFR / dp_passengers_by_age_group)
+  
+  curr_data <-
+    covid_data %>%
+      mutate(expected_final_deaths = curr_final_deaths,
+             expected_final_deaths_per_person = NA) %>%
+      group_by(location) %>%
+      mutate(current_total_deaths = max(total_deaths)) %>%
+      select(location, current_total_deaths, expected_final_deaths, population, expected_final_deaths_per_person, date, new_deaths) %>%
+      ungroup() %>%
+      pivot_wider(names_from = date, values_from = new_deaths) %>%
+      filter(location == i) %>%
+      mutate(expected_final_deaths_per_person = expected_final_deaths / population)
+  
+  names(full_data) <- names(curr_data)
+  full_data <- rbind(full_data, curr_data)
+}
+
+write.xlsx(full_data, file = "expected_deaths_per_country_using_diamond_princess_data.xlsx")
+```
