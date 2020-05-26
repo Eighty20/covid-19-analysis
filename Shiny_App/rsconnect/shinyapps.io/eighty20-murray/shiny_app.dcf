@@ -1,0 +1,12 @@
+name: shiny_app
+title:
+username:
+account: eighty20-murray
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 2330117
+bundleId: 3178857
+url: https://eighty20-murray.shinyapps.io/shiny_app/
+when: 1590159010.52006
+asMultiple: FALSE
+asStatic: FALSE
