@@ -255,9 +255,8 @@ simple_model_data$date <- as.Date(simple_model_data$date)
 simple_model_data <- 
   simple_model_data %>%
     left_join(gov_response_data %>%
-                select(-CountryCode, -ConfirmedCases, -ConfirmedDeaths, -StringencyIndex, -LegacyStringencyIndex) %>%
-                rename(StringencyIndex = StringencyIndexForDisplay,
-                       LegacyStringencyIndex = LegacyStringencyIndexForDisplay))
+                select(-CountryCode, -ConfirmedCases, -ConfirmedDeaths, -StringencyIndex) %>%
+                rename(StringencyIndex = StringencyIndexForDisplay))
 
 ```
 

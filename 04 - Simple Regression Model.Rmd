@@ -223,6 +223,7 @@ fits <- cbind.data.frame(model_variables %>%
 write.csv(fits, "04_Results/best_model_fits_for_in_sample_countries.csv")
 
 # Correlation matrix of variables we included in model 5
+
 as.data.frame(cor(model_variables %>% ungroup() %>% select(Obesity_rate, age_adjusted_risk, gdp_estimate_ppp, gov_response_at_0.1_deaths_per_million, Density_km, Inequality_spatial_transformed)))
 ```
 
