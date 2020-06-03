@@ -1,0 +1,123 @@
+---
+title: "Control Script - Update Everything"
+author: "Murray"
+date: "6/3/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(lubridate)
+```
+
+# 1 - Data Retrieval
+
+## Update
+
+```{r}
+rmarkdown::render("01 - Data Retrieval.Rmd")
+```
+
+## Check
+
+```{r}
+paste0("Covid Cases & Deaths data obtained up until ", max(as.Date(readRDS("01_Workspace/tests_cases_deaths_data.Rds")$date)))
+paste0("Government response data obtained up until ", max(ymd(readRDS("01_Workspace/gov_response_data.Rds")$Date)))
+```
+
+
+# 2 - Data Cleaning
+
+## Update
+
+```{r}
+rmarkdown::render("02 - Data Cleaning.Rmd")
+```
+
+## Check
+
+```{r}
+paste0("Full combined dataset has data up until ", max(as.Date(readRDS("02_Workspace/simple_model_data.Rds")$date)))
+```
+
+
+# 3 - Identifying Stages of Pandemic
+
+## Update
+
+```{r}
+rmarkdown::render("03 - Identifying Stages of Pandemic by Country.Rmd")
+```
+
+## Check
+
+```{r}
+temp <- readRDS("03_Workspace/simple_model_data.Rds") %>%
+          group_by(Country) %>%
+          slice(1)
+
+paste0(sum(temp$peak_cases_already_occurred_indicator, na.rm = T), " of ", nrow(temp), " locations were determined to have experienced their peak in cases already")
+paste0(sum(temp$peak_deaths_already_occurred_indicator, na.rm = T), " of ", nrow(temp), " locations were determined to have experienced their peak in deaths already")
+
+rm(temp)
+```
+
+
+# 4 - Simple Regression Model
+
+## Update
+
+```{r}
+rmarkdown::render("04 - Simple Regression Model.Rmd")
+```
+
+## Check
+
+```{r}
+paste0(nrow(read.csv("04_Results/condensed_data_for_models.csv")), " countries were used in the simple regression model")
+```
+
+
+# 5 - Get Various Projections
+
+## Update
+
+```{r cars}
+rmarkdown::render("05 - Get Various Projections.Rmd")
+```
+
+## Check
+
+```{r}
+temp <- read.csv("Shiny_App/Data/country_data.csv")
+
+temp$date <- as.Date(temp$date)
+
+paste0("IHME forecasts found for ",
+       nrow(temp %>% group_by(location) %>% slice(1) %>% filter(!is.na(ihme_total_deaths_per_million))),
+       " of ",
+       length(unique(temp$location)),
+       " locations")
+paste0("The IHME forecasts are until ",
+       max(temp$date[!is.na(temp$ihme_total_deaths_per_million)]))
+
+rm(temp)
+
+temp <- read.csv("Shiny_App/Data/sa_province_data.csv")
+
+paste0("SA province deaths data obtained up until ", max(as.Date((temp %>% filter(province != "SouthAfrica" & !is.na(total_deaths_per_million)))$date)))
+paste0("SA national deaths data obtained up until ", max(as.Date((temp %>% filter(province == "SouthAfrica" & !is.na(total_deaths_per_million)))$date)))
+
+paste0("SA province deaths data obtained up until ", max(as.Date((temp %>% filter(province != "SouthAfrica" & !is.na(total_cases_per_million)))$date)))
+paste0("SA national deaths data obtained up until ", max(as.Date((temp %>% filter(province == "SouthAfrica" & !is.na(total_cases_per_million)))$date)))
+
+rm(temp)
+```
+
+# Publish app
+
+```{r}
+rsconnect::deployApp('Shiny_App', forceUpdate = T)
+```
+

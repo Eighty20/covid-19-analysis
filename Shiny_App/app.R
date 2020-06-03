@@ -14,6 +14,8 @@ sa_data <- readRDS("Data/sa_data_for_shiny.Rds")
 
 max_date <- max(data$date)
 
+sa_gov_pred_dates <- as.Date(c("2020-06-01", "2020-07-01", "2020-08-01", "2020-09-01", "2020-10-01", "2020-11-01"))
+
 # ui <- navbarPage(title = "Title",
 # tabPanel(),
 # navbarMenu(title = "More",
@@ -26,7 +28,7 @@ ui <- dashboardPage(
   dashboardSidebar(
     sidebarMenu(
       menuItem("International", tabName = "International", icon = icon("globe-africa")),
-      menuItem("SouthAfrica", tabName = "SouthAfrica", icon = icon("map-marker-alt"))
+      menuItem("South Africa", tabName = "SouthAfrica", icon = icon("map-marker-alt"))
     )
   ),
   dashboardBody(
@@ -101,6 +103,16 @@ ui <- dashboardPage(
       fluidRow(
         column(12, plotlyOutput(outputId = "cumulative_dpm_plot_with_predictions2") %>% withSpinner(color="#0dc5c1"))
       ),
+      
+      # selectInput(inputId = "Date",
+      #             label = "Choose a reference date:",
+      #             choices = unique(sa_data$date[sa_data$date < Sys.Date() - 1]),
+      #             selected = Sys.Date() - 2),
+      # 
+      # fluidRow(
+      #   column(12, plotOutput(outputId = "cumulative_dpm_plot_with_predictions3") %>% withSpinner(color="#0dc5c1"))
+      # ),
+      
       
       p("The horizontal lines show the expected final death counts based on different models.\n
     95% confidence bands are given for the IHME and Diamond Princess predictions.\n
@@ -296,6 +308,12 @@ server <- function(input, output) {
       filter(province == input$Country2) 
   } )
   
+  snapshot_data <- reactive( {
+    sa_data %>%
+      filter(date == input$Date) %>%
+      mutate(province = as.factor(province))
+  } )
+  
   output$cumulative_dpm_plot2 <- renderPlotly( {
     ggplotly(filtered_data2() %>%
                filter(!is.na(total_deaths_per_million)) %>%
@@ -350,84 +368,116 @@ server <- function(input, output) {
   } )
   
   output$cumulative_dpm_plot_with_predictions2 <- renderPlotly( {
-      ggplotly(filtered_data2() %>%
-                 ggplot(aes(x = date, y = total_deaths_per_million, color = "Actual")) +
-                 geom_point() +
-                 
-                 # Diamond Princess predictions
-                 geom_line(aes(y = dp_expected_final_deaths_per_million,
-                               x = date,
-                               color = "Diamond Princess"),
-                           linetype = "dashed") +
-                 geom_ribbon(aes(x = date,
-                                 ymin = dp_expected_final_deaths_per_million_lower,
-                                 ymax = dp_expected_final_deaths_per_million_upper,
-                                 color = NA,
-                                 fill = "Diamond Princess CI"),
-                             linetype = "dotdash",
-                             alpha = 0.2) +
-                 
-                 # IHME predictions
-                 # geom_ribbon(aes(x = date,
-                 #                 ymin = ihme_total_deaths_lower_per_million,
-                 #                 ymax = ihme_total_deaths_upper_per_million,
-                 #                 color = NA,
-                 #                 fill = "blue"),
-                 #             linetype = "dashed",
-                 #             alpha = 0.2) +
-                 # geom_line(aes(x = date, y = ihme_total_deaths_per_million, color = "IHME"),
-                 #           linetype = "dashed") +
-               # geom_line(aes(y = ihme_final_dpm,
-               #               x = date,
-               #               color = "IHME"),
-               #           linetype = "dashed") +
-               # geom_ribbon(aes(x = date,
-               #                 ymin = ihme_final_dpm_lower,
-               #                 ymax = ihme_final_dpm_upper,
-               #                 colour = NULL),
-               #             fill = "green",
-               #             alpha = 0.2) +
-               
-               # SA gov optimistic projections
-               geom_line(aes(x = date,
-                             y = gov_sa_predictions,
-                             color = "Gov Optimistic 1/11 Projection"),
-                         linetype = "dashed") +
-                 # geom_ribbon(aes(x = date,
-                 #                 ymin = rep(34015 * 1000000 / 59308690, length(date)),
-                 #                 ymax = rep(46657 * 1000000 / 59308690, length(date)),
-                 #                 color = NA,
-                 #                 fill = "Gov Projection CI"),
-                 #             alpha = 0.2) +
-                 
-                 # ASSA projection - optimistic
-                 geom_line(aes(x = date,
-                               y = rep(48300 * 1000000 / 59308690, length(date)),
-                               color = "ASSA Optimistic Projection"),
-                           linetype = "dashed") +
-                 # geom_ribbon(aes(x = date,
-                 #                 ymin = rep(48300 * 1000000 / 59308690, length(date)),
-                 #                 ymax = rep(48300 * 1000000 / 59308690, length(date)),
-                 #                 color = "ASSA Optimistic Projection"),
-                 #             linteype = "dashed",
-                 #             alpha = 0.2) +
-                 
-                 labs(title = "Cumulative Deaths Per Million Over Time Compared to Various Predictions",
-                      x = "Date",
-                      y = "Deaths per million") +
-                 coord_cartesian(xlim = as.Date(c("2020-02-01", Sys.Date()))) +
-                 scale_x_date(date_breaks = "10 days", date_minor_breaks = "1 days") +
-                 # guides(color = guide_legend(title="Legend"), fill = F) +
-                 scale_color_manual(name = "Legend",
-                                    labels = c("Actual", "Diamond Princess", "Gov Optimistic 1/11 Projection", "ASSA Optimistic Projection"),
-                                    values = c("red", "blue", "green", "purple"),
-                                    guide = 'legend') +
-                 scale_fill_manual(values = c("green", "purple"),
-                                   # labels = c(NULL, NULL),
-                                   name = NULL)
-               # theme(legend.position = "none")
-      )
+      # ggplotly(filtered_data2() %>%
+      #            ggplot(aes(x = date, y = total_deaths_per_million, color = "Actual")) +
+      #            geom_point() +
+      #            
+      #            # Diamond Princess predictions
+      #            geom_line(aes(y = dp_expected_final_deaths_per_million,
+      #                          x = date,
+      #                          color = "Diamond Princess"),
+      #                      linetype = "dashed") +
+      #            geom_ribbon(aes(x = date,
+      #                            ymin = dp_expected_final_deaths_per_million_lower,
+      #                            ymax = dp_expected_final_deaths_per_million_upper,
+      #                            color = NA,
+      #                            fill = "Diamond Princess CI"),
+      #                        linetype = "dotdash",
+      #                        alpha = 0.2) +
+      #            
+      #            # IHME predictions
+      #            # geom_ribbon(aes(x = date,
+      #            #                 ymin = ihme_total_deaths_lower_per_million,
+      #            #                 ymax = ihme_total_deaths_upper_per_million,
+      #            #                 color = NA,
+      #            #                 fill = "blue"),
+      #            #             linetype = "dashed",
+      #            #             alpha = 0.2) +
+      #            # geom_line(aes(x = date, y = ihme_total_deaths_per_million, color = "IHME"),
+      #            #           linetype = "dashed") +
+      #          # geom_line(aes(y = ihme_final_dpm,
+      #          #               x = date,
+      #          #               color = "IHME"),
+      #          #           linetype = "dashed") +
+      #          # geom_ribbon(aes(x = date,
+      #          #                 ymin = ihme_final_dpm_lower,
+      #          #                 ymax = ihme_final_dpm_upper,
+      #          #                 colour = NULL),
+      #          #             fill = "green",
+      #          #             alpha = 0.2) +
+      #          
+      #          # SA gov optimistic projections
+      #          geom_line(aes(x = date,
+      #                        y = gov_sa_predictions,
+      #                        color = "Gov Optimistic 1/11 Projection"),
+      #                    linetype = "dashed") +
+      #            # geom_ribbon(aes(x = date,
+      #            #                 ymin = rep(34015 * 1000000 / 59308690, length(date)),
+      #            #                 ymax = rep(46657 * 1000000 / 59308690, length(date)),
+      #            #                 color = NA,
+      #            #                 fill = "Gov Projection CI"),
+      #            #             alpha = 0.2) +
+      #            
+      #            # ASSA projection - optimistic
+      #            geom_line(aes(x = date,
+      #                          y = rep(48300 * 1000000 / 59308690, length(date)),
+      #                          color = "ASSA Optimistic Projection"),
+      #                      linetype = "dashed") +
+      #            # geom_ribbon(aes(x = date,
+      #            #                 ymin = rep(48300 * 1000000 / 59308690, length(date)),
+      #            #                 ymax = rep(48300 * 1000000 / 59308690, length(date)),
+      #            #                 color = "ASSA Optimistic Projection"),
+      #            #             linteype = "dashed",
+      #            #             alpha = 0.2) +
+      #            
+      #            labs(title = "Cumulative Deaths Per Million Over Time Compared to Various Predictions",
+      #                 x = "Date",
+      #                 y = "Deaths per million") +
+      #            coord_cartesian(xlim = as.Date(c("2020-02-01", Sys.Date()))) +
+      #            scale_x_date(date_breaks = "10 days", date_minor_breaks = "1 days") +
+      #            # guides(color = guide_legend(title="Legend"), fill = F) +
+      #            scale_color_manual(name = "Legend",
+      #                               labels = c("Actual", "Diamond Princess", "Gov Optimistic 1/11 Projection", "ASSA Optimistic Projection"),
+      #                               values = c("red", "blue", "green", "purple"),
+      #                               guide = 'legend') +
+      #            scale_fill_manual(values = c("green", "purple"),
+      #                              # labels = c(NULL, NULL),
+      #                              name = NULL)
+      #          # theme(legend.position = "none")
+      # )
+    
+    ggplotly(
+      ggplot(data = filtered_data2(),
+             aes(x = date, y = optimistic_gov_projection, color = "Optimistic")) +
+        geom_point() +
+        geom_line() +
+        geom_point(aes(x = date, y = pessimistic_gov_projection, color = "Pessimistic")) +
+        geom_line(aes(x = date, y = pessimistic_gov_projection, color = "Pessimistic")) +
+        geom_point(aes(y = total_deaths_per_million, color = "Actual")) +
+        geom_line(aes(y = total_deaths_per_million, color = "Actual")) +
+        geom_ribbon(aes(x = date, ymin = total_deaths_per_million, ymax = total_deaths_per_million, fill = "Actual", color = "Actual"), alpha = 0.2, show.legend = F) +
+        geom_ribbon(aes(x = sa_gov_pred_dates, ymin = optimistic_gov_projection_lower, ymax = optimistic_gov_projection_upper, fill = "Optimistic", color = "Optimistic"), alpha = 0.2, show.legend = F) +
+        geom_ribbon(aes(x = sa_gov_pred_dates, ymin = pessimistic_gov_projection_lower, ymax = pessimistic_gov_projection_upper, fill = "Pessimistic", color = "Pessimistic"), alpha = 0.2, show.legend = F) +
+        labs(title = "South Africa Government Projections",
+             y = "DPM",
+             color = "Legend"),
+      dynamicTicks = T
+    )
   } )
+  
+#   output$cumulative_dpm_plot_with_predictions3 <- renderPlot( {
+#   # ggplotly(
+#     ggplot(data = snapshot_data()) +
+#     geom_point(aes(x = as.numeric(province), y = total_deaths_per_million, color = "Current")) +
+#     geom_rect(aes(xmin = as.numeric(province) - 0.4, xmax = as.numeric(province) + 0.4, ymin = dp_expected_final_deaths_per_million_lower, ymax = dp_expected_final_deaths_per_million_upper), alpha = 0.2) +
+#     geom_point(aes(x = as.numeric(province), y = dp_expected_final_deaths_per_million, color = "Prediction")) +
+#     scale_x_continuous(breaks = c(1:10), labels = province) +
+#     labs(title = "Progress towards Diamond Princess Prediction of Final DPM",
+#          y = "DPM",
+#          x = "Location")
+#   # ,dynamicTicks = T
+#   # )
+# } )
 }
 
 shiny::shinyApp(ui = ui,server = server)

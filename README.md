@@ -2,7 +2,7 @@
 
 ## About full_dataset_for_modelling.csv
 
-This csv was updated on 27 May 2020 at 4pm
+This csv was updated on 3 June at 11am
 
 It merges the following datasets for each country into one file:
 
