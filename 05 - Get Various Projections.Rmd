@@ -19,8 +19,8 @@ library(tidyverse)
 library(openxlsx)
 library(lubridate)
 library(caTools)
-library(plotly)
-library(zoo)
+# library(plotly)
+# library(zoo)
 ```
 
 # Read in the population pyramids and Covid-19 spread data

@@ -456,8 +456,8 @@ server <- function(input, output) {
         geom_point(aes(y = total_deaths_per_million, color = "Actual")) +
         geom_line(aes(y = total_deaths_per_million, color = "Actual")) +
         geom_ribbon(aes(x = date, ymin = total_deaths_per_million, ymax = total_deaths_per_million, fill = "Actual", color = "Actual"), alpha = 0.2, show.legend = F) +
-        geom_ribbon(aes(x = sa_gov_pred_dates, ymin = optimistic_gov_projection_lower, ymax = optimistic_gov_projection_upper, fill = "Optimistic", color = "Optimistic"), alpha = 0.2, show.legend = F) +
-        geom_ribbon(aes(x = sa_gov_pred_dates, ymin = pessimistic_gov_projection_lower, ymax = pessimistic_gov_projection_upper, fill = "Pessimistic", color = "Pessimistic"), alpha = 0.2, show.legend = F) +
+        geom_ribbon(aes(x = date, ymin = optimistic_gov_projection_lower, ymax = optimistic_gov_projection_upper, fill = "Optimistic", color = "Optimistic"), alpha = 0.2, show.legend = F) +
+        geom_ribbon(aes(x = date, ymin = pessimistic_gov_projection_lower, ymax = pessimistic_gov_projection_upper, fill = "Pessimistic", color = "Pessimistic"), alpha = 0.2, show.legend = F) +
         labs(title = "South Africa Government Projections",
              y = "DPM",
              color = "Legend"),
