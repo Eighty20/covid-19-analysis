@@ -1,0 +1,975 @@
+---
+title: "05 - Collect Various Model Predictions"
+author: "Murray"
+date: "5/19/2020"
+output: html_document
+---
+
+We obtain the following predictions to compare:
+
+  Panda estimate using Diamond Princess data
+  IHME August 1 2020 predictions
+  SA government predictions
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+rm(list = ls())
+library(tidyverse)
+library(openxlsx)
+library(lubridate)
+library(caTools)
+# library(plotly)
+# library(zoo)
+```
+
+# Read in the population pyramids and Covid-19 spread data
+
+```{r}
+age_data <- readRDS("01_Workspace/age_data.Rds")
+covid_data <- readRDS("02_Workspace/tests_cases_deaths_data.Rds")
+
+latest_data_date <- max(as.Date(covid_data$date))
+```
+
+# Enter in Diamond Princess (dp) data - https://www.medrxiv.org/content/10.1101/2020.03.05.20031773v2.full.pdf - page 5
+
+```{r}
+# 0-9, 10-19, ..., 80-89
+dp_passengers_by_age_group <- c(16, 23, 347, 428, 334, 398, 923, 1015, 216)
+sum(dp_passengers_by_age_group)
+
+dp_symp_cases_per_age_group <- c(0, 2, 25, 27, 19, 28, 76, 95, 29)
+sum(dp_symp_cases_per_age_group)
+
+dp_expected_deaths_per_age_group_using_nCFR <- c(0, 0, 0.05, 0.06, 0.08, 0.36, 2.74, 7.6, 4.28)
+sum(dp_expected_deaths_per_age_group_using_nCFR)
+
+dp_expected_deaths_per_age_group_using_nCFR_lower <- c(0, 0, 0.02, 0.04, 0.06, 0.31, 2.5, 6.8, 3.8)
+sum(dp_expected_deaths_per_age_group_using_nCFR_lower)
+
+dp_expected_deaths_per_age_group_using_nCFR_upper <- c(0, 0, 0.10, 0.10, 0.12, 0.43, 3.1, 8.4, 4.9)
+sum(dp_expected_deaths_per_age_group_using_nCFR_upper)
+
+# plot(y = dp_symp_cases / dp_passengers_by_age_group, x = 1:9)
+```
+
+# Check country names of the two data sources align
+
+```{r}
+setdiff(covid_data$location, names(age_data))[order(setdiff(covid_data$location, names(age_data)))]
+setdiff(names(age_data), covid_data$location)[order(setdiff(names(age_data), covid_data$location))]
+
+names(age_data)[names(age_data) == "BruneiDarussalam"] <- "Brunei"
+names(age_data)[names(age_data) == "CaboVerde"] <- "CapeVerde"
+names(age_data)[names(age_data) == "ChinaHongKongSAR"] <- "HongKong"
+names(age_data)[names(age_data) == "DRCongo"] <- "DemocraticRepublicofCongo"
+names(age_data)[names(age_data) == "GuineaBissau"] <- "Guinea-Bissau"
+names(age_data)[names(age_data) == "RepublicofKorea"] <- "SouthKorea"
+names(age_data)[names(age_data) == "RepublicofMoldova"] <- "Moldova"
+names(age_data)[names(age_data) == "RussianFederation"] <- "Russia"
+names(age_data)[names(age_data) == "StateofPalestine"] <- "Palestine"
+names(age_data)[names(age_data) == "SyrianArabRepublic"] <- "Syria"
+names(age_data)[names(age_data) == "TFYRMacedonia"] <- "Macedonia"
+names(age_data)[names(age_data) == "TimorLeste"] <- "Timor"
+names(age_data)[names(age_data) == "VietNam"] <- "Vietnam"
+names(age_data)[names(age_data) == "WORLD"] <- "World"
+names(age_data)[names(age_data) == "UnitedStatesofAmerica"] <- "UnitedStates"
+```
+
+# Estimate total deaths per country using dp data
+
+```{r}
+full_data <- rbind.data.frame(rep(0, 7 + as.numeric(max(as.Date(covid_data$date)) - as.Date("2019-12-31"))))[-1,]
+
+data_for_shiny <- rbind.data.frame(rep(0, 18))[-1,]
+
+for(i in intersect(covid_data$location, names(age_data))) {
+  curr_age_data <- diff(c(0, cumsum(rowSums((age_data[[i]])[,2:3]))[c(2, 4, 6, 8, 10, 12, 14, 16, 21)]))
+  
+  curr_final_deaths <- sum(curr_age_data * dp_expected_deaths_per_age_group_using_nCFR / dp_passengers_by_age_group)
+  curr_final_deaths_lower <- sum(curr_age_data * dp_expected_deaths_per_age_group_using_nCFR_lower / dp_passengers_by_age_group)
+  curr_final_deaths_upper <- sum(curr_age_data * dp_expected_deaths_per_age_group_using_nCFR_upper / dp_passengers_by_age_group)
+  
+  curr_data <-
+    covid_data %>%
+      mutate(expected_final_deaths = curr_final_deaths,
+             expected_final_deaths_per_person = NA,
+             note = "New deaths each day:") %>%
+      group_by(location) %>%
+      mutate(current_total_deaths = max(total_deaths)) %>%
+      select(location, current_total_deaths, expected_final_deaths, population, expected_final_deaths_per_person, note, date, new_deaths) %>%
+      ungroup() %>%
+      pivot_wider(names_from = date, values_from = new_deaths) %>%
+      filter(location == i) %>%
+      mutate(expected_final_deaths_per_person = expected_final_deaths / sum(rowSums((age_data[[i]])[,2:3])))
+  
+  names(full_data) <- names(curr_data)
+  full_data <- rbind(full_data, curr_data)
+  
+  
+  curr_shiny_data <-
+    covid_data %>%
+      filter(location == i) %>%
+      mutate(dp_expected_final_deaths = curr_final_deaths,
+             dp_expected_final_deaths_lower = curr_final_deaths_lower,
+             dp_expected_final_deaths_upper = curr_final_deaths_upper,
+             max_total_deaths = max(total_deaths)) %>%
+      mutate(dp_expected_final_deaths_per_million = 1000000 * dp_expected_final_deaths / sum(rowSums((age_data[[i]])[,2:3])),
+             dp_expected_final_deaths_lower_per_million = 1000000 * dp_expected_final_deaths_lower / sum(rowSums((age_data[[i]])[,2:3])),
+             dp_expected_final_deaths_upper_per_million = 1000000 * dp_expected_final_deaths_upper / sum(rowSums((age_data[[i]])[,2:3]))) %>%
+      select(location, date, max_total_deaths, population,
+             new_deaths, total_deaths, new_deaths_per_million, total_deaths_per_million,
+             new_cases, total_cases, new_cases_per_million, total_cases_per_million,
+             dp_expected_final_deaths, dp_expected_final_deaths_lower, dp_expected_final_deaths_upper,
+             dp_expected_final_deaths_per_million, dp_expected_final_deaths_lower_per_million, dp_expected_final_deaths_upper_per_million)
+  
+  names(data_for_shiny) <- names(curr_shiny_data)
+  data_for_shiny <- rbind(data_for_shiny, curr_shiny_data)
+}
+
+full_data <- full_data[,c(1:6, 6 + order(as.Date(names(full_data)[7:length(names(full_data))])))]
+
+write.xlsx(full_data, file = "expected_deaths_per_country_using_diamond_princess_data.xlsx")
+
+# data_for_shiny <-
+#   covid_data %>%
+#     group_by(location) %>%
+#     mutate(max_total_deaths = max(total_deaths)) %>%
+#     select(location, date, max_total_deaths, population,
+#              new_deaths, total_deaths, new_deaths_per_million, total_deaths_per_million) %>%
+#     ungroup() %>%
+#     full_join(data_for_shiny)
+
+data_for_shiny$date <- as.Date(data_for_shiny$date)
+# 
+# data_for_shiny %>%
+#   filter(location == "SouthAfrica")
+```
+
+# Add in local Data
+
+```{r}
+sa_province_data_deaths <- read.csv(url("https://raw.githubusercontent.com/dsfsi/covid19za/master/data/covid19za_provincial_cumulative_timeline_deaths.csv"))
+
+sa_province_data_cases <- read.csv(url("https://raw.githubusercontent.com/dsfsi/covid19za/master/data/covid19za_provincial_cumulative_timeline_confirmed.csv"))
+
+
+sa_population_data <- read.xlsx("00_Local_data/Eighty20_ghs2018_p_2020_5_22_10_39.xlsx")
+
+names(sa_population_data) <- gsub(" ", "", c(NA, NA, "Age", sa_population_data[2,4:12], "SouthAfrica"))
+
+sa_population_data <-
+  sa_population_data[4:(nrow(sa_population_data) - 2),3:13]
+
+sa_banded_population_data <- 1000000 * apply(sa_population_data[,2:11], 2, function(x) diff(c(0, cumsum(x)[c(seq(10, 80, 10), 107)])) / cumsum(x)[107])
+
+sa_banded_population_data
+sa_population_data
+  
+sa_final_deaths <- apply(sa_banded_population_data, 2, function(x) sum((x * dp_expected_deaths_per_age_group_using_nCFR /
+                                                                         dp_passengers_by_age_group)))
+sa_final_deaths_lower <- apply(sa_banded_population_data, 2, function(x) sum(x * dp_expected_deaths_per_age_group_using_nCFR_lower / dp_passengers_by_age_group))
+sa_final_deaths_upper <- apply(sa_banded_population_data, 2, function(x) sum(x * dp_expected_deaths_per_age_group_using_nCFR_upper / dp_passengers_by_age_group))
+
+dp_sa_predictions <- cbind.data.frame(c("WesternCape", "EasternCape", "NorthernCape",
+                        "FreeState", "KwazuluNatal", "NorthWestProvince",
+                        "Gauteng", "Mpumalanga", "Limpopo", "SouthAfrica"),
+                        sa_final_deaths,
+                        sa_final_deaths_lower,
+                        sa_final_deaths_upper)
+
+names(dp_sa_predictions) <- c("province",
+                              "dp_expected_final_deaths_per_million",
+                              "dp_expected_final_deaths_lower_per_million",
+                              "dp_expected_final_deaths_upper_per_million")
+```
+
+# Enter Government projections for start of each month
+
+```{r}
+gov_sa_predictions_nov_deaths <- c(5618, 2245, 10010, 7599, 3771, 2879, 1027, 2376, 5291, 40784)
+gov_sa_predictions_nov_deaths_lower <- c(4642, 1894, 8451, 6406, 3046, 2381, 858, 1856, 4473, 34015)
+gov_sa_predictions_nov_deaths_upper <- c(6474, 2549, 11362, 8649, 4371, 3313, 1173, 2785, 6003, 46657)
+
+gov_sa_predictions_oct_deaths <- c(4787, 2172, 9752, 7253, 2963, 2497, 934, 1700, 5194, 37090)
+gov_sa_predictions_oct_deaths_lower <- c(3061, 1789, 8068, 5801, 1663, 1653, 690, 815, 4328, 28446)
+gov_sa_predictions_oct_deaths_upper <- c(6010, 2508, 11227, 8448, 3940, 3088, 1121, 2422, 5953, 44459)
+
+gov_sa_predictions_sep_deaths <- c(2015, 1732, 8162, 5253, 945, 1128, 526, 412, 4553, 24750)
+gov_sa_predictions_sep_deaths_lower <- c(755, 1117, 5633, 3010, 308, 438, 241, 123, 3380, 14979)
+gov_sa_predictions_sep_deaths_upper <- c(3920, 2229, 10200, 7191, 2169, 2092, 854, 1092, 5526, 35296)
+
+gov_sa_predictions_aug_deaths <- c(216, 544, 3036, 1248, 84, 128, 78, 32, 2046, 7430)
+gov_sa_predictions_aug_deaths_lower <- c(78, 238, 1407, 507, 30, 46, 29, 11, 1037, 3386)
+gov_sa_predictions_aug_deaths_upper <- c(604, 1069, 5535, 2731, 247, 353, 201, 98, 3417, 14249)
+
+gov_sa_predictions_jul_deaths <- c(16, 55, 342, 111, 7, 10, 7, 3, 273, 822)
+gov_sa_predictions_jul_deaths_lower <- c(9, 28, 179, 57, 4, 5, 4, 2, 145, 431)
+gov_sa_predictions_jul_deaths_upper <- c(33, 110, 673, 225, 12, 19, 12, 5, 524, 1618)
+
+gov_sa_predictions_jun_deaths <- c(3, 10, 62, 19, 2, 2, 2, 1, 51, 151)
+gov_sa_predictions_jun_deaths_lower <- c(3, 8, 46, 14, 1, 2, 1, 1, 38, 112)
+gov_sa_predictions_jun_deaths_upper <- c(5, 14, 89, 28, 2, 3, 2, 1, 73, 216)
+
+
+pess_gov_sa_predictions_nov_deaths <- c(6102, 2384, 10614, 8103, 4147, 3119, 1103, 2661, 5601, 43831)
+pess_gov_sa_predictions_nov_deaths_lower <- c(5163, 2017, 8983, 6856, 3508, 2639, 933, 2249, 4740, 37094)
+pess_gov_sa_predictions_nov_deaths_upper <- c(6937, 2710, 12064, 9211, 4712, 3545, 1253, 3022, 6365, 49774)
+
+pess_gov_sa_predictions_oct_deaths <- c(6032, 2380, 10602, 8082, 4072, 3086, 1096, 2589, 5595, 43543)
+pess_gov_sa_predictions_oct_deaths_lower <- c(5091, 2014, 8971, 6835, 3421, 2611, 927, 2152, 4736, 36811)
+pess_gov_sa_predictions_oct_deaths_upper <- c(6891, 2704, 12035, 9182, 4663, 3524, 1249, 2981, 6347, 49614)
+
+pess_gov_sa_predictions_sep_deaths <- c(5372, 2322, 10403, 7789, 3426, 2779, 1021, 2020, 5521, 40565)
+pess_gov_sa_predictions_sep_deaths_lower <- c(4008, 1951, 8768, 6485, 2365, 2110, 821, 1272, 4667, 32773)
+pess_gov_sa_predictions_sep_deaths_upper <- c(6462, 2663, 11899, 8994, 4270, 3329, 1198, 2640, 6299, 47489)
+
+pess_gov_sa_predictions_aug_deaths <- c(2083, 1795, 8458, 5409, 983, 1161, 544, 432, 4720, 25647)
+pess_gov_sa_predictions_aug_deaths_lower <- c(925, 1262, 6208, 3472, 391, 533, 287, 159, 3644, 17037)
+pess_gov_sa_predictions_aug_deaths_upper <- c(3744, 2284, 10491, 7252, 2033, 2017, 836, 1014, 5709, 34982)
+
+pess_gov_sa_predictions_jul_deaths <- c(143, 395, 2258, 870, 55, 84, 52, 21, 1595, 5486)
+pess_gov_sa_predictions_jul_deaths_lower <- c(64, 199, 1184, 419, 24, 38, 24, 10, 886, 2849)
+pess_gov_sa_predictions_jul_deaths_upper <- c(333, 732, 3956, 1753, 132, 196, 117, 51, 2607, 9869)
+
+pess_gov_sa_predictions_jun_deaths <- c(11, 38, 237, 76, 5, 7, 5, 2, 191, 571)
+pess_gov_sa_predictions_jun_deaths_lower <- c(7, 24, 150, 48, 3, 5, 3, 2, 122, 363)
+pess_gov_sa_predictions_jun_deaths_upper <- c(18, 63, 390, 127, 8, 10, 8, 3, 312, 940)
+
+```
+
+```{r}
+gov_sa_predictions_nov_cases <- c(393593, 171939, 902400, 662374, 341463, 265754, 74968, 228303, 410348, 3450932)
+gov_sa_predictions_nov_cases_lower <- c(329162, 145302, 763140, 558685, 283221, 222450, 63037, 186742, 346976, 2898897)
+gov_sa_predictions_nov_cases_upper <- c(450595, 195038, 1023642, 751926, 393314, 303654, 85403, 264351, 465420, 3932537)
+
+gov_sa_predictions_oct_cases <- c(357237, 168454, 888293, 642836, 295487, 243354, 70687, 184784, 406064, 3245104)
+gov_sa_predictions_oct_cases_lower <- c(257849, 140957, 743922, 531304, 191855, 178992, 55736, 105310, 341001, 2589072)
+gov_sa_predictions_oct_cases_upper <- c(431109, 193515, 1017137, 741395, 368817, 291743, 83072, 243527, 463135, 3817607)
+
+gov_sa_predictions_sep_cases <- c(193861, 146952, 797651, 525449, 125501, 139887, 48703, 60892, 374587, 2416136)
+gov_sa_predictions_sep_cases_lower <- c(80577, 104898, 594031, 343423, 44532, 60956, 25318, 19157, 294360, 1592775)
+gov_sa_predictions_sep_cases_upper <- c(332234, 179988, 960223, 674451, 254223, 230755, 70745, 145509, 443712, 3282335)
+
+gov_sa_predictions_aug_cases <- c(26004, 61628, 388828, 168275, 13249, 20198, 9497, 5445, 216509, 910318)
+gov_sa_predictions_aug_cases_lower <- c(9159, 28667, 194037, 71044, 4531, 7138, 3533, 1846, 118204, 439042)
+gov_sa_predictions_aug_cases_upper <- c(74263, 110832, 650076, 347944, 40651, 56456, 23977, 17309, 329212, 1642691)
+
+gov_sa_predictions_jul_cases <- c(1934, 6948, 50340, 16137, 931, 1480, 747, 383, 34019, 112997)
+gov_sa_predictions_jul_cases_lower <- c(943, 3362, 24578, 7744, 439, 695, 354, 185, 16974, 55232)
+gov_sa_predictions_jul_cases_upper <- c(4322, 15042, 106405, 35616, 2124, 3368, 1683, 864, 69148, 238964)
+
+gov_sa_predictions_jun_cases <- c(301, 942, 7008, 2204, 123, 190, 98, 58, 4889, 15817)
+gov_sa_predictions_jun_cases_lower <- c(221, 632, 4730, 1501, 84, 127, 66, 42, 3298, 10702)
+gov_sa_predictions_jun_cases_upper <- c(443, 1485, 11001, 3439, 193, 301, 154, 86, 7669, 24781)
+
+pess_gov_sa_predictions_nov_cases <- c(423362, 182289, 955916, 703510, 370297, 285154, 80068, 250518, 434121, 3685249)
+pess_gov_sa_predictions_nov_cases_lower <- c(358295, 154239, 808915, 595206, 313354, 241319, 67749, 212001, 367384, 3118462)
+pess_gov_sa_predictions_nov_cases_upper <- c(481203, 207210, 1086608, 799657, 420957, 324106, 90974, 284645, 493434, 4187290)
+
+pess_gov_sa_predictions_oct_cases <- c(420726, 182098, 955118, 702498, 366361, 283634, 79767, 246831, 433833, 3670117)
+pess_gov_sa_predictions_oct_cases_lower <- c(356117, 154133, 808476, 594606, 309802, 239949, 67542, 207657, 367229, 3104194)
+pess_gov_sa_predictions_oct_cases_upper <- c(479874, 206799, 1084030, 798082, 418848, 323234, 90756, 282644, 493150, 4173374)
+
+pess_gov_sa_predictions_sep_cases <- c(394408, 179578, 945181, 688708, 331989, 267862, 76975, 214904, 430646, 3532779)
+pess_gov_sa_predictions_sep_cases_lower <- c(314955, 151701, 800261, 579628, 254185, 215517, 63621, 152500, 364272, 2920352)
+pess_gov_sa_predictions_sep_cases_upper <- c(462862, 205229, 1079312, 788678, 398392, 312702, 88895, 263755, 489968, 4080889)
+
+pess_gov_sa_predictions_aug_cases <- c(212936, 155126, 841945, 561173, 140233, 153556, 52403, 69035, 394492, 2586688)
+pess_gov_sa_predictions_aug_cases_lower <- c(106728, 117923, 659695, 400415, 60553, 80008, 31581, 26769, 318875, 1830408)
+pess_gov_sa_predictions_aug_cases_upper <- c(331635, 188771, 1005225, 700082, 249684, 230878, 71533, 141657, 464533, 3340153)
+
+pess_gov_sa_predictions_jul_cases <- c(18890, 49696, 323954, 131801, 9539, 14729, 7091, 3896, 186617, 743689)
+pess_gov_sa_predictions_jul_cases_lower <- c(8231, 25949, 177197, 64297, 4069, 6416, 3184, 1655, 109271, 400140)
+pess_gov_sa_predictions_jul_cases_upper <- c(44044, 86666, 526144, 252430, 22994, 34093, 15509, 9576, 277938, 1271758)
+
+pess_gov_sa_predictions_jun_cases <- c(1286, 4632, 33876, 10689, 608, 966, 491, 253, 23348, 76106)
+pess_gov_sa_predictions_jun_cases_lower <- c(769, 2719, 19992, 6257, 353, 558, 285, 150, 13861, 44955)
+pess_gov_sa_predictions_jun_cases_upper <- c(2213, 7992, 57864, 18511, 1065, 1695, 859, 437, 39196, 129884)
+```
+
+```{r}
+province <- c("EasternCape", "FreeState", "Gauteng", "KwazuluNatal", "Limpopo",
+              "Mpumalanga", "NorthernCape", "NorthWestProvince", "WesternCape", "SouthAfrica")
+
+opt_gov_sa_predictions_deaths <- cbind.data.frame(province,
+                                           gov_sa_predictions_jun_deaths,
+                                           gov_sa_predictions_jul_deaths,
+                                           gov_sa_predictions_aug_deaths,
+                                           gov_sa_predictions_sep_deaths,
+                                           gov_sa_predictions_oct_deaths,
+                                           gov_sa_predictions_nov_deaths)
+
+opt_gov_sa_predictions_deaths <- as.data.frame(matrix(as.numeric(trimws(t(opt_gov_sa_predictions_deaths)[-1,])), nrow = 6))
+names(opt_gov_sa_predictions_deaths) <- province
+
+opt_gov_sa_predictions_deaths$date <- as.Date(c("2020-06-01", "2020-07-01", "2020-08-01", "2020-09-01", "2020-10-01", "2020-11-01"))
+
+opt_gov_sa_predictions_deaths_lower <- cbind.data.frame(province,
+                                           gov_sa_predictions_jun_deaths_lower,
+                                           gov_sa_predictions_jul_deaths_lower,
+                                           gov_sa_predictions_aug_deaths_lower,
+                                           gov_sa_predictions_sep_deaths_lower,
+                                           gov_sa_predictions_oct_deaths_lower,
+                                           gov_sa_predictions_nov_deaths_lower)
+
+opt_gov_sa_predictions_deaths_lower <- as.data.frame(matrix(as.numeric(trimws(t(opt_gov_sa_predictions_deaths_lower)[-1,])), nrow = 6))
+names(opt_gov_sa_predictions_deaths_lower) <- province
+
+opt_gov_sa_predictions_deaths_lower$date <- as.Date(c("2020-06-01", "2020-07-01", "2020-08-01", "2020-09-01", "2020-10-01", "2020-11-01"))
+
+opt_gov_sa_predictions_deaths_upper <- cbind.data.frame(province,
+                                           gov_sa_predictions_jun_deaths_upper,
+                                           gov_sa_predictions_jul_deaths_upper,
+                                           gov_sa_predictions_aug_deaths_upper,
+                                           gov_sa_predictions_sep_deaths_upper,
+                                           gov_sa_predictions_oct_deaths_upper,
+                                           gov_sa_predictions_nov_deaths_upper)
+
+opt_gov_sa_predictions_deaths_upper <- as.data.frame(matrix(as.numeric(trimws(t(opt_gov_sa_predictions_deaths_upper)[-1,])), nrow = 6))
+names(opt_gov_sa_predictions_deaths_upper) <- province
+
+opt_gov_sa_predictions_deaths_upper$date <- as.Date(c("2020-06-01", "2020-07-01", "2020-08-01", "2020-09-01", "2020-10-01", "2020-11-01"))
+
+
+# Pessimistic predictions
+
+pess_gov_sa_predictions_deaths <- cbind.data.frame(province,
+                                           pess_gov_sa_predictions_jun_deaths,
+                                           pess_gov_sa_predictions_jul_deaths,
+                                           pess_gov_sa_predictions_aug_deaths,
+                                           pess_gov_sa_predictions_sep_deaths,
+                                           pess_gov_sa_predictions_oct_deaths,
+                                           pess_gov_sa_predictions_nov_deaths)
+
+pess_gov_sa_predictions_deaths <- as.data.frame(matrix(as.numeric(trimws(t(pess_gov_sa_predictions_deaths)[-1,])), nrow = 6))
+names(pess_gov_sa_predictions_deaths) <- province
+
+pess_gov_sa_predictions_deaths$date <- as.Date(c("2020-06-01", "2020-07-01", "2020-08-01", "2020-09-01", "2020-10-01", "2020-11-01"))
+
+pess_gov_sa_predictions_deaths_lower <- cbind.data.frame(province,
+                                           pess_gov_sa_predictions_jun_deaths_lower,
+                                           pess_gov_sa_predictions_jul_deaths_lower,
+                                           pess_gov_sa_predictions_aug_deaths_lower,
+                                           pess_gov_sa_predictions_sep_deaths_lower,
+                                           pess_gov_sa_predictions_oct_deaths_lower,
+                                           pess_gov_sa_predictions_nov_deaths_lower)
+
+pess_gov_sa_predictions_deaths_lower <- as.data.frame(matrix(as.numeric(trimws(t(pess_gov_sa_predictions_deaths_lower)[-1,])), nrow = 6))
+names(pess_gov_sa_predictions_deaths_lower) <- province
+
+pess_gov_sa_predictions_deaths_lower$date <- as.Date(c("2020-06-01", "2020-07-01", "2020-08-01", "2020-09-01", "2020-10-01", "2020-11-01"))
+
+pess_gov_sa_predictions_deaths_upper <- cbind.data.frame(province,
+                                           pess_gov_sa_predictions_jun_deaths_upper,
+                                           pess_gov_sa_predictions_jul_deaths_upper,
+                                           pess_gov_sa_predictions_aug_deaths_upper,
+                                           pess_gov_sa_predictions_sep_deaths_upper,
+                                           pess_gov_sa_predictions_oct_deaths_upper,
+                                           pess_gov_sa_predictions_nov_deaths_upper)
+
+pess_gov_sa_predictions_deaths_upper <- as.data.frame(matrix(as.numeric(trimws(t(pess_gov_sa_predictions_deaths_upper)[-1,])), nrow = 6))
+names(pess_gov_sa_predictions_deaths_upper) <- province
+
+pess_gov_sa_predictions_deaths_upper$date <- as.Date(c("2020-06-01", "2020-07-01", "2020-08-01", "2020-09-01", "2020-10-01", "2020-11-01"))
+
+opt_gov_sa_predictions_deaths <-
+  opt_gov_sa_predictions_deaths %>%
+  pivot_longer(cols = c("EasternCape", "FreeState", "Gauteng", "KwazuluNatal", "Limpopo", "Mpumalanga", "NorthernCape", "NorthWestProvince", "WesternCape", "SouthAfrica"),
+               names_to = "province",
+               values_to = "optimistic_gov_projection_deaths") %>%
+  group_by(province) %>%
+  mutate(new_deaths_prior_month_optimistic_gov_projection = diff(c(0, optimistic_gov_projection_deaths)))
+
+opt_gov_sa_predictions_deaths_lower <-
+  opt_gov_sa_predictions_deaths_lower %>%
+  pivot_longer(cols = c("EasternCape", "FreeState", "Gauteng", "KwazuluNatal", "Limpopo", "Mpumalanga", "NorthernCape", "NorthWestProvince", "WesternCape", "SouthAfrica"),
+               names_to = "province",
+               values_to = "optimistic_gov_projection_deaths_lower") %>%
+  group_by(province) %>%
+  mutate(new_deaths_prior_month_optimistic_gov_projection_lower = diff(c(0, optimistic_gov_projection_deaths_lower)))
+
+opt_gov_sa_predictions_deaths_upper <-
+  opt_gov_sa_predictions_deaths_upper %>%
+  pivot_longer(cols = c("EasternCape", "FreeState", "Gauteng", "KwazuluNatal", "Limpopo", "Mpumalanga", "NorthernCape", "NorthWestProvince", "WesternCape", "SouthAfrica"),
+               names_to = "province",
+               values_to = "optimistic_gov_projection_deaths_upper") %>%
+  group_by(province) %>%
+  mutate(new_deaths_prior_month_optimistic_gov_projection_upper = diff(c(0, optimistic_gov_projection_deaths_upper)))
+
+pess_gov_sa_predictions_deaths <-
+  pess_gov_sa_predictions_deaths %>%
+  pivot_longer(cols = c("EasternCape", "FreeState", "Gauteng", "KwazuluNatal", "Limpopo", "Mpumalanga", "NorthernCape", "NorthWestProvince", "WesternCape", "SouthAfrica"),
+               names_to = "province",
+               values_to = "pessimistic_gov_projection_deaths") %>%
+  group_by(province) %>%
+  mutate(new_deaths_prior_month_pessimistic_gov_projection = diff(c(0, pessimistic_gov_projection_deaths)))
+
+pess_gov_sa_predictions_deaths_lower <-
+  pess_gov_sa_predictions_deaths_lower %>%
+  pivot_longer(cols = c("EasternCape", "FreeState", "Gauteng", "KwazuluNatal", "Limpopo", "Mpumalanga", "NorthernCape", "NorthWestProvince", "WesternCape", "SouthAfrica"),
+               names_to = "province",
+               values_to = "pessimistic_gov_projection_deaths_lower") %>%
+  group_by(province) %>%
+  mutate(new_deaths_prior_month_pessimistic_gov_projection_lower = diff(c(0, pessimistic_gov_projection_deaths_lower)))
+
+pess_gov_sa_predictions_deaths_upper <-
+  pess_gov_sa_predictions_deaths_upper %>%
+  pivot_longer(cols = c("EasternCape", "FreeState", "Gauteng", "KwazuluNatal", "Limpopo", "Mpumalanga", "NorthernCape", "NorthWestProvince", "WesternCape", "SouthAfrica"),
+               names_to = "province",
+               values_to = "pessimistic_gov_projection_deaths_upper") %>%
+  group_by(province) %>%
+  mutate(new_deaths_prior_month_pessimistic_gov_projection_upper = diff(c(0, pessimistic_gov_projection_deaths_upper)))
+
+```
+
+
+```{r}
+opt_gov_sa_predictions_cases <- cbind.data.frame(province,
+                                           gov_sa_predictions_jun_cases,
+                                           gov_sa_predictions_jul_cases,
+                                           gov_sa_predictions_aug_cases,
+                                           gov_sa_predictions_sep_cases,
+                                           gov_sa_predictions_oct_cases,
+                                           gov_sa_predictions_nov_cases)
+
+opt_gov_sa_predictions_cases <- as.data.frame(matrix(as.numeric(trimws(t(opt_gov_sa_predictions_cases)[-1,])), nrow = 6))
+names(opt_gov_sa_predictions_cases) <- province
+
+opt_gov_sa_predictions_cases$date <- as.Date(c("2020-06-01", "2020-07-01", "2020-08-01", "2020-09-01", "2020-10-01", "2020-11-01"))
+
+opt_gov_sa_predictions_cases_lower <- cbind.data.frame(province,
+                                           gov_sa_predictions_jun_cases_lower,
+                                           gov_sa_predictions_jul_cases_lower,
+                                           gov_sa_predictions_aug_cases_lower,
+                                           gov_sa_predictions_sep_cases_lower,
+                                           gov_sa_predictions_oct_cases_lower,
+                                           gov_sa_predictions_nov_cases_lower)
+
+opt_gov_sa_predictions_cases_lower <- as.data.frame(matrix(as.numeric(trimws(t(opt_gov_sa_predictions_cases_lower)[-1,])), nrow = 6))
+names(opt_gov_sa_predictions_cases_lower) <- province
+
+opt_gov_sa_predictions_cases_lower$date <- as.Date(c("2020-06-01", "2020-07-01", "2020-08-01", "2020-09-01", "2020-10-01", "2020-11-01"))
+
+opt_gov_sa_predictions_cases_upper <- cbind.data.frame(province,
+                                           gov_sa_predictions_jun_cases_upper,
+                                           gov_sa_predictions_jul_cases_upper,
+                                           gov_sa_predictions_aug_cases_upper,
+                                           gov_sa_predictions_sep_cases_upper,
+                                           gov_sa_predictions_oct_cases_upper,
+                                           gov_sa_predictions_nov_cases_upper)
+
+opt_gov_sa_predictions_cases_upper <- as.data.frame(matrix(as.numeric(trimws(t(opt_gov_sa_predictions_cases_upper)[-1,])), nrow = 6))
+names(opt_gov_sa_predictions_cases_upper) <- province
+
+opt_gov_sa_predictions_cases_upper$date <- as.Date(c("2020-06-01", "2020-07-01", "2020-08-01", "2020-09-01", "2020-10-01", "2020-11-01"))
+
+
+# Pessimistic predictions
+
+pess_gov_sa_predictions_cases <- cbind.data.frame(province,
+                                           pess_gov_sa_predictions_jun_cases,
+                                           pess_gov_sa_predictions_jul_cases,
+                                           pess_gov_sa_predictions_aug_cases,
+                                           pess_gov_sa_predictions_sep_cases,
+                                           pess_gov_sa_predictions_oct_cases,
+                                           pess_gov_sa_predictions_nov_cases)
+
+pess_gov_sa_predictions_cases <- as.data.frame(matrix(as.numeric(trimws(t(pess_gov_sa_predictions_cases)[-1,])), nrow = 6))
+names(pess_gov_sa_predictions_cases) <- province
+
+pess_gov_sa_predictions_cases$date <- as.Date(c("2020-06-01", "2020-07-01", "2020-08-01", "2020-09-01", "2020-10-01", "2020-11-01"))
+
+pess_gov_sa_predictions_cases_lower <- cbind.data.frame(province,
+                                           pess_gov_sa_predictions_jun_cases_lower,
+                                           pess_gov_sa_predictions_jul_cases_lower,
+                                           pess_gov_sa_predictions_aug_cases_lower,
+                                           pess_gov_sa_predictions_sep_cases_lower,
+                                           pess_gov_sa_predictions_oct_cases_lower,
+                                           pess_gov_sa_predictions_nov_cases_lower)
+
+pess_gov_sa_predictions_cases_lower <- as.data.frame(matrix(as.numeric(trimws(t(pess_gov_sa_predictions_cases_lower)[-1,])), nrow = 6))
+names(pess_gov_sa_predictions_cases_lower) <- province
+
+pess_gov_sa_predictions_cases_lower$date <- as.Date(c("2020-06-01", "2020-07-01", "2020-08-01", "2020-09-01", "2020-10-01", "2020-11-01"))
+
+pess_gov_sa_predictions_cases_upper <- cbind.data.frame(province,
+                                           pess_gov_sa_predictions_jun_cases_upper,
+                                           pess_gov_sa_predictions_jul_cases_upper,
+                                           pess_gov_sa_predictions_aug_cases_upper,
+                                           pess_gov_sa_predictions_sep_cases_upper,
+                                           pess_gov_sa_predictions_oct_cases_upper,
+                                           pess_gov_sa_predictions_nov_cases_upper)
+
+pess_gov_sa_predictions_cases_upper <- as.data.frame(matrix(as.numeric(trimws(t(pess_gov_sa_predictions_cases_upper)[-1,])), nrow = 6))
+names(pess_gov_sa_predictions_cases_upper) <- province
+
+pess_gov_sa_predictions_cases_upper$date <- as.Date(c("2020-06-01", "2020-07-01", "2020-08-01", "2020-09-01", "2020-10-01", "2020-11-01"))
+
+opt_gov_sa_predictions_cases <-
+  opt_gov_sa_predictions_cases %>%
+  pivot_longer(cols = c("EasternCape", "FreeState", "Gauteng", "KwazuluNatal", "Limpopo", "Mpumalanga", "NorthernCape", "NorthWestProvince", "WesternCape", "SouthAfrica"),
+               names_to = "province",
+               values_to = "optimistic_gov_projection_cases") %>%
+  group_by(province) %>%
+  mutate(new_cases_prior_month_optimistic_gov_projection = diff(c(0, optimistic_gov_projection_cases)))
+
+opt_gov_sa_predictions_cases_lower <-
+  opt_gov_sa_predictions_cases_lower %>%
+  pivot_longer(cols = c("EasternCape", "FreeState", "Gauteng", "KwazuluNatal", "Limpopo", "Mpumalanga", "NorthernCape", "NorthWestProvince", "WesternCape", "SouthAfrica"),
+               names_to = "province",
+               values_to = "optimistic_gov_projection_cases_lower") %>%
+  group_by(province) %>%
+  mutate(new_cases_prior_month_optimistic_gov_projection_lower = diff(c(0, optimistic_gov_projection_cases_lower)))
+
+opt_gov_sa_predictions_cases_upper <-
+  opt_gov_sa_predictions_cases_upper %>%
+  pivot_longer(cols = c("EasternCape", "FreeState", "Gauteng", "KwazuluNatal", "Limpopo", "Mpumalanga", "NorthernCape", "NorthWestProvince", "WesternCape", "SouthAfrica"),
+               names_to = "province",
+               values_to = "optimistic_gov_projection_cases_upper") %>%
+  group_by(province) %>%
+  mutate(new_cases_prior_month_optimistic_gov_projection_upper = diff(c(0, optimistic_gov_projection_cases_upper)))
+
+pess_gov_sa_predictions_cases <-
+  pess_gov_sa_predictions_cases %>%
+  pivot_longer(cols = c("EasternCape", "FreeState", "Gauteng", "KwazuluNatal", "Limpopo", "Mpumalanga", "NorthernCape", "NorthWestProvince", "WesternCape", "SouthAfrica"),
+               names_to = "province",
+               values_to = "pessimistic_gov_projection_cases") %>%
+  group_by(province) %>%
+  mutate(new_cases_prior_month_pessimistic_gov_projection = diff(c(0, pessimistic_gov_projection_cases)))
+
+pess_gov_sa_predictions_cases_lower <-
+  pess_gov_sa_predictions_cases_lower %>%
+  pivot_longer(cols = c("EasternCape", "FreeState", "Gauteng", "KwazuluNatal", "Limpopo", "Mpumalanga", "NorthernCape", "NorthWestProvince", "WesternCape", "SouthAfrica"),
+               names_to = "province",
+               values_to = "pessimistic_gov_projection_cases_lower") %>%
+  group_by(province) %>%
+  mutate(new_cases_prior_month_pessimistic_gov_projection_lower = diff(c(0, pessimistic_gov_projection_cases_lower)))
+
+pess_gov_sa_predictions_cases_upper <-
+  pess_gov_sa_predictions_cases_upper %>%
+  pivot_longer(cols = c("EasternCape", "FreeState", "Gauteng", "KwazuluNatal", "Limpopo", "Mpumalanga", "NorthernCape", "NorthWestProvince", "WesternCape", "SouthAfrica"),
+               names_to = "province",
+               values_to = "pessimistic_gov_projection_cases_upper") %>%
+  group_by(province) %>%
+  mutate(new_cases_prior_month_pessimistic_gov_projection_upper = diff(c(0, pessimistic_gov_projection_cases_upper)))
+
+```
+
+```{r}
+
+all_gov_projections <-
+  opt_gov_sa_predictions_deaths %>%
+    full_join(opt_gov_sa_predictions_deaths_lower) %>%
+    full_join(opt_gov_sa_predictions_deaths_upper) %>%
+    full_join(pess_gov_sa_predictions_deaths) %>%
+    full_join(pess_gov_sa_predictions_deaths_lower) %>%
+    full_join(pess_gov_sa_predictions_deaths_upper) %>%
+    full_join(opt_gov_sa_predictions_cases) %>%
+    full_join(opt_gov_sa_predictions_cases_lower) %>%
+    full_join(opt_gov_sa_predictions_cases_upper) %>%
+    full_join(pess_gov_sa_predictions_cases) %>%
+    full_join(pess_gov_sa_predictions_cases_lower) %>%
+    full_join(pess_gov_sa_predictions_cases_upper)
+
+# ggplot(data = all_gov_projections %>% filter(province == "WesternCape"),
+#        aes(x = date, y = optimistic_gov_projection, color = "Optimistic")) +
+#   geom_point() +
+#   geom_line() +
+#   geom_point(aes(x = date, y = pessimistic_gov_projection, color = "Pessimistic")) +
+#   geom_line(aes(x = date, y = pessimistic_gov_projection, color = "Pessimistic")) +
+#   # geom_line(aes(y = optimistic_gov_projection_lower, color = "Lower")) +
+#   # geom_line(aes(y = optimistic_gov_projection_upper, color = "Upper")) +
+#   # geom_point(aes(y = optimistic_gov_projection_lower, color = "Lower")) +
+#   # geom_point(aes(y = optimistic_gov_projection_upper, color = "Upper")) +
+#   geom_ribbon(aes(x = date, ymin = optimistic_gov_projection_lower, ymax = optimistic_gov_projection_upper, fill = "red", color = NA), alpha = 0.2, show.legend = F) +
+#   geom_ribbon(aes(x = date, ymin = pessimistic_gov_projection_lower, ymax = pessimistic_gov_projection_upper, fill = "blue", color = NA), alpha = 0.2, show.legend = F) +
+#   labs(title = "Western Cape Government Projections")
+```
+
+```{r}
+# gov_sa_predictions_all <- cbind.data.frame(province,
+#                                            gov_sa_predictions,
+#                                            gov_sa_predictions_lower,
+#                                            gov_sa_predictions_upper)
+
+sa_province_data <-
+  sa_province_data_deaths %>%
+  rename(EasternCape = EC,
+         FreeState = FS,
+         Gauteng = GP,
+         KwazuluNatal = KZN,
+         Limpopo = LP,
+         Mpumalanga = MP,
+         NorthernCape = NC,
+         NorthWestProvince = NW,
+         WesternCape = WC) %>%
+  mutate(date = ymd(YYYYMMDD)) %>%
+  select(-YYYYMMDD, -UNKNOWN, -source, -total) %>%
+  pivot_longer(cols = c("EasternCape", "FreeState", "Gauteng",
+                        "KwazuluNatal", "Limpopo", "Mpumalanga",
+                        "NorthernCape", "NorthWestProvince", "WesternCape"),
+               names_to = "province",
+               values_to = "total_deaths") %>%
+  group_by(province) %>%
+  mutate(new_deaths = case_when(is.na(lag(total_deaths)) ~ total_deaths,
+                                TRUE ~ total_deaths - lag(total_deaths)),
+         first_case = as.Date(case_when(province == "EasternCape"~ "2020-03-21", # EC
+                              province == "FreeState"~ "2020-03-20", # FS
+                              province == "Gauteng"~ "2020-03-07", # GP
+                              province == "KwazuluNatal"~ "2020-03-05", # KZN
+                              province == "Limpopo"~ "2020-03-16", # LP
+                              province == "Mpumalanga"~ "2020-03-12", # MP
+                              province == "NorthernCape"~ "2020-03-23", # NC
+                              province == "NorthWestProvince"~ "2020-03-23", # NW
+                              province == "WesternCape"~ "2020-03-11" # WC
+                              )),
+         max_total_deaths = max(total_deaths)) %>%
+  ungroup() %>%
+  left_join(sa_province_data_cases %>%
+              rename(EasternCape = EC,
+                     FreeState = FS,
+                     Gauteng = GP,
+                     KwazuluNatal = KZN,
+                     Limpopo = LP,
+                     Mpumalanga = MP,
+                     NorthernCape = NC,
+                     NorthWestProvince = NW,
+                     WesternCape = WC) %>%
+              mutate(date = ymd(YYYYMMDD)) %>%
+              select(-YYYYMMDD, -UNKNOWN, -source, -total) %>%
+              pivot_longer(cols = c("EasternCape", "FreeState", "Gauteng",
+                                    "KwazuluNatal", "Limpopo", "Mpumalanga",
+                                    "NorthernCape", "NorthWestProvince", "WesternCape"),
+                           names_to = "province",
+                           values_to = "total_cases") %>%
+              group_by(province) %>%
+              mutate(new_cases = case_when(is.na(lag(total_cases)) ~ total_cases,
+                                            TRUE ~ total_cases - lag(total_cases)),
+                     max_total_cases = max(total_cases)) %>%
+              ungroup()
+            ) %>%
+  left_join(data.frame(province[1:9], as.numeric(t(sa_population_data[108, 1 + c(2, 4, 7, 5, 9, 8, 3, 6, 1)]))) %>%
+              rename(province = province.1.9.,
+                     population = as.numeric.t.sa_population_data.108..1...c.2..4..7..5..9..8..)) %>%
+  mutate(total_deaths_per_million = total_deaths * 1000000 / population,
+         new_deaths_per_million = new_deaths * 1000000 / population,
+         total_cases_per_million = total_cases * 1000000 / population,
+         new_cases_per_million = new_cases * 1000000 / population
+         ) %>%
+  left_join(dp_sa_predictions)
+  
+```
+
+# Get date of first case / death
+
+```{r}
+first_case_date <-
+  data_for_shiny %>%
+    group_by(location) %>%
+    filter(total_cases > 0) %>%
+    slice(1) %>%
+    select(location, date) %>%
+    rename(first_case = date) %>%
+    ungroup()
+
+first_death_date <-
+  data_for_shiny %>%
+    group_by(location) %>%
+    filter(total_deaths > 0) %>%
+    slice(1) %>%
+    select(location, date) %>%
+    rename(first_death = date) %>%
+    ungroup()
+
+first_death_date_sa <-
+  sa_province_data %>%
+    group_by(province) %>%
+    filter(total_deaths > 0) %>%
+    slice(1) %>%
+    select(province, date) %>%
+    rename(first_death = date) %>%
+    ungroup()
+
+# first_case_date_sa <-
+#   sa_province_data %>%
+#     group_by(location) %>%
+#     filter(total_cases > 0) %>%
+#     slice(1) %>%
+#     select(province, date) %>%
+#     rename(first_case = date) %>%
+#     ungroup()
+
+sa_province_data <-
+  sa_province_data %>%
+  left_join(first_death_date_sa)
+  # left_join(first_case_date_sa)
+```
+
+# IHME predictions
+
+```{r}
+# download.file(url = "https://ihmecovid19storage.blob.core.windows.net/latest/ihme-covid19.zip", destfile = "00_Local_data/IHME.zip", mode = "wb")
+# unzip("00_Local_data/IHME.zip", exdir = "00_Local_data")
+
+latest_data <- gsub("-", "_", as.character(max(as.Date(gsub("/", "", gsub("_", "-", gsub("00_Local_data", "", list.dirs("00_Local_data"))))[-1]))))
+
+ihme_data <-
+  read.csv(paste0("00_Local_data/", latest_data, "/Hospitalization_all_locs.csv"))
+
+ihme_data <-
+  ihme_data %>%
+  select(location_name, date, deaths_mean, deaths_lower, deaths_upper, totdea_mean, totdea_lower, totdea_upper) %>%
+  rename(Country = location_name,
+         total_deaths = totdea_mean,
+         total_deaths_upper = totdea_upper,
+         total_deaths_lower = totdea_lower) %>%
+  mutate(date = as.Date(date),
+         Country = gsub(" ", "", Country))
+```
+
+```{r}
+setdiff(data_for_shiny$location, ihme_data$Country)[order(setdiff(data_for_shiny$location, ihme_data$Country))]
+setdiff(ihme_data$Country, data_for_shiny$location)[order(setdiff(ihme_data$Country, data_for_shiny$location))]
+
+ihme_data$Country[ihme_data$Country == "UnitedStatesofAmerica"] <- "UnitedStates"
+ihme_data$Country[ihme_data$Country == "Bolivia(PlurinationalStateof)"] <- "Bolivia"
+ihme_data$Country[ihme_data$Country == "Czechia"] <- "CzechRepublic"
+ihme_data$Country[ihme_data$Country == "Mexico"] <- "NotReallyMexico"
+ihme_data$Country[ihme_data$Country == "Mexico_country"] <- "Mexico"
+ihme_data$Country[ihme_data$Country == "RepublicofKorea"] <- "SouthKorea"
+ihme_data$Country[ihme_data$Country == "RepublicofMoldova"] <- "Moldova"
+ihme_data$Country[ihme_data$Country == "Georgia"] <- "NotReallyGeorgia"
+
+# length(unique(data_for_shiny$location))
+# 
+# intersect(data_for_shiny$location, ihme_data$Country)
+
+data_for_shiny <-
+  data_for_shiny %>%
+    full_join(ihme_data %>%
+                filter(Country %in% na.omit(intersect(data_for_shiny$location, ihme_data$Country)[order(setdiff(data_for_shiny$location, ihme_data$Country))])) %>%
+                rename(location = Country,
+                       ihme_total_deaths = total_deaths,
+                       ihme_total_deaths_lower = total_deaths_lower,
+                       ihme_total_deaths_upper = total_deaths_upper,
+                       ihme_new_deaths_mean = deaths_mean,
+                       ihme_new_deaths_lower = deaths_lower,
+                       ihme_new_deaths_upper = deaths_upper)
+              )
+
+data_for_shiny <-
+  data_for_shiny %>%
+  group_by(location) %>%
+  mutate(population = max(population, na.rm = T),
+         dp_expected_final_deaths = max(dp_expected_final_deaths, na.rm = T),
+         dp_expected_final_deaths_lower = max(dp_expected_final_deaths_lower, na.rm = T),
+         dp_expected_final_deaths_upper = max(dp_expected_final_deaths_upper, na.rm = T),
+         dp_expected_final_deaths_per_million = max(dp_expected_final_deaths_per_million, na.rm = T),
+         dp_expected_final_deaths_lower_per_million = max(dp_expected_final_deaths_lower_per_million, na.rm = T),
+         dp_expected_final_deaths_upper_per_million = max(dp_expected_final_deaths_upper_per_million, na.rm = T)) %>%
+  ungroup() %>%
+    mutate(ihme_total_deaths_per_million = 1000000 * ihme_total_deaths / population,
+           ihme_total_deaths_lower_per_million = 1000000 * ihme_total_deaths_lower / population,
+           ihme_total_deaths_upper_per_million = 1000000 * ihme_total_deaths_upper / population,
+           ihme_new_deaths_mean_per_million = 1000000 * ihme_new_deaths_mean / population,
+           ihme_new_deaths_lower_per_million = 1000000 * ihme_new_deaths_lower / population,
+           ihme_new_deaths_upper_per_million = 1000000 * ihme_new_deaths_upper / population) %>%
+  group_by(location) %>%
+  mutate(ihme_final_dpm = if_else(!max(ihme_total_deaths_per_million, na.rm = T) == -Inf, max(ihme_total_deaths_per_million, na.rm = T), NaN),
+         ihme_final_dpm_lower = if_else(!max(ihme_total_deaths_lower_per_million, na.rm = T) == -Inf, max(ihme_total_deaths_lower_per_million, na.rm = T), NaN),
+         ihme_final_dpm_upper = if_else(!max(ihme_total_deaths_upper_per_million, na.rm = T) == -Inf, max(ihme_total_deaths_upper_per_million, na.rm = T), NaN)) %>%
+  ungroup()
+
+# data_for_shiny %>% filter(location == "SouthAfrica")
+
+# temp <- data_for_shiny %>% filter(location == "Belgium") %>%
+#       ggplot(aes(x = date, y = total_deaths_per_million, color = "Actual DPM")) +
+#       geom_point() +
+#       geom_line(aes(y = expected_final_deaths_per_million,
+#                     x = date,
+#                     color = "Panda prediction"),
+#                 linetype = "dashed") +
+#       geom_line(aes(y = ihme_total_deaths_per_million,
+#                     x = date,
+#                     color = "IHME"),
+#                 linetype = "dashed") +
+#       geom_ribbon(aes(x = date, ymin = ihme_total_deaths_lower_per_million, ymax = ihme_total_deaths_upper_per_million, colour = "IHME"), alpha = 0.1) +
+#       geom_line(aes(x = date, y = ihme_total_deaths_per_million, colour = "IHME")) +
+#       labs(title = "Cumulative Deaths Per Million Over Time Compared to Various Predictions",
+#            x = "Date",
+#            y = "Deaths per million") +
+#       coord_cartesian(xlim = as.Date(c("2020-02-01", max_date)))
+# 
+# ggplotly(temp)
+```
+
+```{r}
+data_for_shiny <-
+  data_for_shiny %>%
+    left_join(first_case_date) %>%
+    left_join(first_death_date)
+
+sa_covid_data <-
+  data_for_shiny %>%
+  filter(location == "SouthAfrica") %>%
+  rename(province = location) %>%
+  full_join(sa_province_data) %>%
+  full_join(all_gov_projections) %>%
+  mutate(optimistic_gov_projection_deaths_per_million = optimistic_gov_projection_deaths * 1000000 / population,
+         optimistic_gov_projection_deaths_lower_per_million = optimistic_gov_projection_deaths_lower * 1000000 / population,
+         optimistic_gov_projection_deaths_upper_per_million = optimistic_gov_projection_deaths_upper * 1000000 / population,
+         pessimistic_gov_projection_deaths_per_million = pessimistic_gov_projection_deaths * 1000000 / population,
+         pessimistic_gov_projection_deaths_lower_per_million = pessimistic_gov_projection_deaths_lower * 1000000 / population,
+         pessimistic_gov_projection_deaths_upper_per_million = pessimistic_gov_projection_deaths_upper * 1000000 / population,
+         optimistic_gov_projection_cases_per_million = optimistic_gov_projection_cases * 1000000 / population,
+         optimistic_gov_projection_cases_lower_per_million = optimistic_gov_projection_cases_lower * 1000000 / population,
+         optimistic_gov_projection_cases_upper_per_million = optimistic_gov_projection_cases_upper * 1000000 / population,
+         pessimistic_gov_projection_cases_per_million = pessimistic_gov_projection_cases * 1000000 / population,
+         pessimistic_gov_projection_cases_lower_per_million = pessimistic_gov_projection_cases_lower * 1000000 / population,
+         pessimistic_gov_projection_cases_upper_per_million = pessimistic_gov_projection_cases_upper * 1000000 / population,
+         new_deaths_prior_month_optimistic_gov_projection_per_million = new_deaths_prior_month_optimistic_gov_projection * 1000000 / population,
+         new_deaths_prior_month_optimistic_gov_projection_lower_per_million = new_deaths_prior_month_optimistic_gov_projection_lower * 1000000 / population,
+         new_deaths_prior_month_optimistic_gov_projection_upper_per_million = new_deaths_prior_month_optimistic_gov_projection_upper * 1000000 / population,
+         new_deaths_prior_month_pessimistic_gov_projection_per_million = new_deaths_prior_month_pessimistic_gov_projection * 1000000 / population,
+         new_deaths_prior_month_pessimistic_gov_projection_lower_per_million = new_deaths_prior_month_pessimistic_gov_projection_lower * 1000000 / population,
+         new_deaths_prior_month_pessimistic_gov_projection_upper_per_million = new_deaths_prior_month_pessimistic_gov_projection_upper * 1000000 / population,
+         new_cases_prior_month_optimistic_gov_projection_per_million = new_cases_prior_month_optimistic_gov_projection * 1000000 / population,
+         new_cases_prior_month_optimistic_gov_projection_lower_per_million = new_cases_prior_month_optimistic_gov_projection_lower * 1000000 / population,
+         new_cases_prior_month_optimistic_gov_projection_upper_per_million = new_cases_prior_month_optimistic_gov_projection_upper * 1000000 / population,
+         new_cases_prior_month_pessimistic_gov_projection_per_million = new_cases_prior_month_pessimistic_gov_projection * 1000000 / population,
+         new_cases_prior_month_pessimistic_gov_projection_lower_per_million = new_cases_prior_month_pessimistic_gov_projection_lower * 1000000 / population,
+         new_cases_prior_month_pessimistic_gov_projection_upper_per_million = new_cases_prior_month_pessimistic_gov_projection_upper * 1000000 / population
+         )
+```
+
+
+```{r}
+# ggplotly(
+# ggplot(data = sa_covid_data %>% filter(province == "SouthAfrica"),
+#        aes(x = date, y = optimistic_gov_projection, color = "Optimistic")) +
+#   geom_point() +
+#   geom_line() +
+#   geom_point(aes(x = date, y = pessimistic_gov_projection, color = "Pessimistic")) +
+#   geom_line(aes(x = date, y = pessimistic_gov_projection, color = "Pessimistic")) +
+#   geom_point(aes(y = total_deaths_per_million, color = "Actual")) +
+#   geom_line(aes(y = total_deaths_per_million, color = "Actual")) +
+#   geom_ribbon(aes(x = date, ymin = total_deaths_per_million, ymax = total_deaths_per_million, fill = "Actual", color = "Actual"), alpha = 0.2, show.legend = F) +
+#   geom_ribbon(aes(x = date, ymin = optimistic_gov_projection_lower, ymax = optimistic_gov_projection_upper, fill = "Optimistic", color = "Optimistic"), alpha = 0.2, show.legend = F) +
+#   geom_ribbon(aes(x = date, ymin = pessimistic_gov_projection_lower, ymax = pessimistic_gov_projection_upper, fill = "Pessimistic", color = "Pessimistic"), alpha = 0.2, show.legend = F) +
+#   labs(title = "South Africa Government Projections",
+#        y = "DPM",
+#        color = "Legend"),
+# dynamicTicks = T
+# )
+```
+
+```{r}
+wide_all_gov_projections <-
+  all_gov_projections %>%
+    mutate(date = as.character(month(date, label = T))) %>%
+    pivot_wider(id_cols = "province", names_from = "date", values_from = names(all_gov_projections)[-c(1:2)])
+
+sa_covid_data <- 
+  sa_covid_data %>%
+  left_join(wide_all_gov_projections)
+
+# plotly(
+# ggplot(data = sa_covid_data %>% filter(date == latest_data_date - 1) %>% mutate(province = as.factor(province))) +
+#   geom_point(aes(x = as.numeric(province), y = total_deaths_per_million, color = "Current")) +
+#   geom_rect(aes(xmin = as.numeric(province) - 0.4, xmax = as.numeric(province) + 0.4, ymin = dp_expected_final_deaths_per_million_lower, ymax = dp_expected_final_deaths_per_million_upper), alpha = 0.2) +
+#   geom_point(aes(x = as.numeric(province), y = dp_expected_final_deaths_per_million, color = "Prediction")) +
+#   scale_x_continuous(breaks = c(1:10), labels = province) +
+#   labs(title = "Progress towards Diamond Princess Prediction of Final DPM",
+#        y = "DPM",
+# x = "Location")
+# )
+
+# ggplot(data = sa_snapshot_data) +
+#   geom_point(aes(x = Location, y = total_deaths_per_million, color = "Current")) +
+#   geom_rect(aes(xmin = Location - 0.4, xmax = Location + 0.4, ymin = optimistic_gov_projection_lower_Jun, ymax = optimistic_gov_projection_upper_Jun), alpha = 0.2) +
+#   geom_point(aes(x = Location, y = optimistic_gov_projection_Jun, color = "Prediction")) +
+#   scale_x_continuous(breaks = c(1:10), labels = sa_snapshot_data$province) +
+#   labs(title = "Progress towards June Government Prediction of Final DPM",
+#        y = "DPM")
+# 
+# ggplot(data = sa_snapshot_data) +
+#   geom_point(aes(x = Location, y = total_deaths_per_million, color = "Current")) +
+#   geom_rect(aes(xmin = Location - 0.4, xmax = Location + 0.4, ymin = optimistic_gov_projection_lower_Nov, ymax = optimistic_gov_projection_upper_Nov), alpha = 0.2) +
+#   geom_point(aes(x = Location, y = optimistic_gov_projection_Nov, color = "Prediction")) +
+#   scale_x_continuous(breaks = c(1:10), labels = sa_snapshot_data$province) +
+#   labs(title = "Progress towards November Government Prediction of Final DPM",
+#        y = "DPM")
+```
+
+```{r}
+data_for_shiny <-
+  data_for_shiny %>%
+  group_by(location) %>%
+  filter(date <= latest_data_date) %>%
+  mutate(new_deaths_per_million = case_when(!is.na(new_deaths_per_million) ~ new_deaths_per_million,
+                                TRUE ~ 0),
+         total_deaths_per_million = case_when(!is.na(total_deaths_per_million) ~ total_deaths_per_million,
+                                TRUE ~ 0),
+         new_cases_per_million = case_when(!is.na(new_cases_per_million) ~ new_cases_per_million,
+                                TRUE ~ 0),
+         total_cases_per_million = case_when(!is.na(total_cases_per_million) ~ total_cases_per_million,
+                                TRUE ~ 0)) %>%
+  mutate(smoothed_new_deaths_per_million = smooth.spline(runmean(new_deaths_per_million, k = 7))$y,
+         smoothed_total_deaths_per_million = smooth.spline(total_deaths_per_million)$y,
+         smoothed_new_cases_per_million = smooth.spline(new_cases_per_million)$y,
+         smoothed_total_cases_per_million = smooth.spline(total_cases_per_million)$y) %>%
+  select(date, smoothed_new_deaths_per_million, smoothed_total_deaths_per_million,
+         smoothed_new_cases_per_million, smoothed_total_cases_per_million) %>%
+  full_join(data_for_shiny) %>%
+  ungroup()
+
+sa_covid_data <-
+  sa_covid_data %>%
+  group_by(province) %>%
+  filter(date <= latest_data_date) %>%
+  mutate(new_deaths_per_million = case_when(!is.na(new_deaths_per_million) ~ new_deaths_per_million,
+                                TRUE ~ 0),
+         total_deaths_per_million = case_when(!is.na(total_deaths_per_million) ~ total_deaths_per_million,
+                                TRUE ~ 0),
+         new_cases_per_million = case_when(!is.na(new_cases_per_million) ~ new_cases_per_million,
+                                TRUE ~ 0),
+         total_cases_per_million = case_when(!is.na(total_cases_per_million) ~ total_cases_per_million,
+                                TRUE ~ 0)) %>%
+  mutate(smoothed_new_deaths_per_million = runmean(new_deaths_per_million, k = 7, align = "right"),
+         smoothed_total_deaths_per_million = runmean(total_deaths_per_million, k = 7, align = "right"),
+         smoothed_new_cases_per_million = runmean(new_cases_per_million, k = 7, align = "right"),
+         smoothed_total_cases_per_million = runmean(total_cases_per_million, k = 7, align = "right")) %>%
+  select(date, smoothed_new_deaths_per_million, smoothed_total_deaths_per_million,
+         smoothed_new_cases_per_million, smoothed_total_cases_per_million) %>%
+  full_join(sa_covid_data) %>%
+  ungroup() %>%
+  mutate(dp_expected_final_deaths = dp_expected_final_deaths_per_million * population / 1000000,
+         dp_expected_final_deaths_lower = dp_expected_final_deaths_lower_per_million * population / 1000000,
+         dp_expected_final_deaths_upper = dp_expected_final_deaths_upper_per_million * population / 1000000)
+
+data_for_shiny <-
+  data_for_shiny %>%
+  rename(ihme_new_deaths = ihme_new_deaths_mean,
+         ihme_new_deaths_per_million = ihme_new_deaths_mean_per_million)
+
+sa_covid_data <-
+  sa_covid_data %>%
+  rename(ihme_new_deaths = ihme_new_deaths_mean,
+         ihme_new_deaths_per_million = ihme_new_deaths_mean_per_million) %>%
+  group_by(province) %>%
+  mutate(new_deaths_past_30_days_per_million = c(rep(NA, 30), diff(total_deaths_per_million, 30)),
+         new_cases_past_30_days_per_million = c(rep(NA, 30), diff(total_cases_per_million, 30)),
+         new_deaths_past_30_days = c(rep(NA, 30), diff(total_deaths, 30)),
+         new_cases_past_30_days = c(rep(NA, 30), diff(total_cases, 30))) %>%
+  ungroup()
+
+saveRDS(data_for_shiny, "Shiny_App/Data/data_for_shiny.Rds")
+saveRDS(sa_covid_data, "Shiny_App/Data/sa_data_for_shiny.Rds")
+
+write.csv(data_for_shiny, "Shiny_App/Data/country_data.csv")
+write.csv(sa_covid_data, "Shiny_App/Data/sa_province_data.csv")
+
+```
+

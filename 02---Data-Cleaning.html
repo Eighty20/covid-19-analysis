@@ -242,7 +242,7 @@ simple_model_data &lt;- full_join(tests_cases_deaths_data %&gt;%
                                         total_cases, new_cases, total_cases_per_million, new_cases_per_million,
                                         total_deaths, new_deaths, total_deaths_per_million, new_deaths_per_million,
                                         total_tests, new_tests, total_tests_per_thousand, new_tests_per_thousand,
-                                        population, hospital_beds_per_100k) %&gt;%
+                                        population) %&gt;%
                                  rename(Country = location, population_size = population),
                                obesity_data %&gt;% select(Country, Bothsexes) %&gt;% rename(Obesity_rate = Bothsexes))</code></pre>
 <pre><code>## Joining, by = &quot;Country&quot;</code></pre>
