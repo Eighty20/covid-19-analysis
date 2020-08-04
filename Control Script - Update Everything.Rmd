@@ -118,7 +118,8 @@ rm(temp)
 # Publish app
 
 ```{r}
+# library(caTools)
 # rsconnect::deployApp('Shiny_App', forceUpdate = T, launch.browser = F)
-                     #appFiles = c("Shiny_App/App.R", "Shiny_App/Data/data_for_shiny.Rds", "Shiny_App/Data/sa_data_for_shiny.Rds"))
+                     # appFiles = c("Shiny_App/App.R", "Shiny_App/Data/data_for_shiny.Rds", "Shiny_App/Data/sa_data_for_shiny.Rds"))
 ```
 
